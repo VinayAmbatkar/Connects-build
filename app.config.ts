@@ -27,7 +27,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // without Android also resizing the window (which caused clipping).
     softwareKeyboardLayoutMode: 'pan',
     adaptiveIcon: {
-      backgroundColor: '#F57D01',
+      backgroundColor: '#FFFFFF',
       foregroundImage: './assets/images/android-icon-foreground.png',
       backgroundImage: './assets/images/android-icon-background.png',
       monochromeImage: './assets/images/android-icon-monochrome.png',
@@ -50,8 +50,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       'expo-splash-screen',
       {
         image: './assets/images/splash-icon.png',
+        imageWidth: 200,
         resizeMode: 'contain',
-        backgroundColor: '#F57D01',
+        backgroundColor: '#FFFFFF',
       },
     ],
     [
