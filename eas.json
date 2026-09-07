@@ -1,0 +1,35 @@
+{
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "MAX_APP_SIZE_MB": "30",
+        "EXPO_PUBLIC_API_URL": "https://backendcode-7jad.onrender.com/api",
+        "EXPO_PUBLIC_WEB_ORIGIN": "https://www.cobilds.com"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "MAX_APP_SIZE_MB": "30"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
