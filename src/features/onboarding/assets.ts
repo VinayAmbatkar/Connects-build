@@ -1,9 +1,9 @@
 import { Image, ImageSourcePropType } from 'react-native';
 
-export const brandLogo: ImageSourcePropType = require('../../../assets/images/COBILDS_Icon_Transparent.png');
-export const onboardingHero: ImageSourcePropType = require('../../../assets/images/Onboarding/onboarding-hero.png');
-export const onboardingVendors: ImageSourcePropType = require('../../../assets/images/Onboarding/onboardimg2.png');
-export const onboardingFeed: ImageSourcePropType = require('../../../assets/images/Onboarding/onboardimg3.png');
+export const brandLogo: ImageSourcePropType = require('../../../assets/images/COBILDS_Icon_Transparent.webp');
+export const onboardingHero: ImageSourcePropType = require('../../../assets/images/Onboarding/onboarding-hero.webp');
+export const onboardingVendors: ImageSourcePropType = require('../../../assets/images/Onboarding/onboardimg2.webp');
+export const onboardingFeed: ImageSourcePropType = require('../../../assets/images/Onboarding/onboardimg3.webp');
 
 /** Prefetch onboarding art so the first slide paints smoothly. */
 export function prefetchOnboardingImages() {

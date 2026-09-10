@@ -24,7 +24,7 @@ import { useAuthActions } from '@/src/hooks/useAuthActions';
 import { usePrefsStore } from '@/src/store/prefsStore';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
-const loginHero = require('../../assets/images/Onboarding/loginimg-bg.png');
+const loginHero = require('../../assets/images/Onboarding/loginimg-bg.webp');
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BRAND = '#F57D01';
 

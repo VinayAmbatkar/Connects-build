@@ -24,7 +24,7 @@ import { DEFAULT_ROLES, type AppRole } from '@/src/constants/app';
 import { useSignupStore } from '@/src/store/signupStore';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
-const signupHero = require('../../../assets/images/Onboarding/loginimg-bg.png');
+const signupHero = require('../../../assets/images/Onboarding/loginimg-bg.webp');
 const BRAND = '#F57D01';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = Math.min(SCREEN_WIDTH * 0.72, 280);

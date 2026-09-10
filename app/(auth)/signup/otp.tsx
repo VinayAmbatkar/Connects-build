@@ -25,7 +25,7 @@ import { BrandHeader } from '@/src/features/onboarding/BrandHeader';
 import { useSignupStore } from '@/src/store/signupStore';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
-const signupHero = require('../../../assets/images/Onboarding/loginimg-bg.png');
+const signupHero = require('../../../assets/images/Onboarding/loginimg-bg.webp');
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BRAND = '#F57D01';
 

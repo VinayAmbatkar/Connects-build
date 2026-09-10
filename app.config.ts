@@ -64,6 +64,24 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
           'Allow COBILDS to use your camera for uploads.',
       },
     ],
+    [
+      'expo-build-properties',
+      {
+        android: {
+          // Universal APKs ship 4 ABIs (~100MB). Phones need arm64 only.
+          buildArchs: ['arm64-v8a'],
+          enableMinifyInReleaseBuilds: true,
+          enableShrinkResourcesInReleaseBuilds: true,
+          enableBundleCompression: true,
+          useLegacyPackaging: true,
+          extraProguardRules: [
+            '-keep class com.swmansion.reanimated.** { *; }',
+            '-keep class com.swmansion.worklets.** { *; }',
+            '-keep class com.facebook.react.turbomodule.** { *; }',
+          ].join('\n'),
+        },
+      },
+    ],
   ],
   experiments: {
     typedRoutes: true,

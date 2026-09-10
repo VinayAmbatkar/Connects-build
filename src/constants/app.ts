@@ -22,11 +22,11 @@ export type AppRole = {
 };
 
 export const ROLE_IMAGES = {
-  Consultant: require('../../assets/images/Roles/Consultant.png'),
-  Builder: require('../../assets/images/Roles/Builder.png'),
-  Vendor: require('../../assets/images/Roles/Vendor.png'),
-  Contractor: require('../../assets/images/Roles/contractor.png'),
-  Architect: require('../../assets/images/Roles/architect.png'),
+  Consultant: require('../../assets/images/Roles/Consultant.webp'),
+  Builder: require('../../assets/images/Roles/Builder.webp'),
+  Vendor: require('../../assets/images/Roles/Vendor.webp'),
+  Contractor: require('../../assets/images/Roles/contractor.webp'),
+  Architect: require('../../assets/images/Roles/architect.webp'),
 } as const;
 
 export const DEFAULT_ROLES: AppRole[] = [
