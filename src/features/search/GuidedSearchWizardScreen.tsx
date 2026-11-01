@@ -9,7 +9,7 @@ import {
 import { router, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BottomSheet } from '@/src/components/BottomSheet';
+import { LocationAutocomplete } from '@/src/components/LocationAutocomplete';
 import {
   LOCATION_OPTIONS,
   PROJECT_TYPE_OPTIONS,
@@ -88,6 +88,7 @@ export function GuidedSearchWizardScreen() {
   const setSpecialization = useSearchFlowStore((s) => s.setSpecialization);
 
   const [locOpen, setLocOpen] = useState(false);
+  const [locValue, setLocValue] = useState(location || '');
 
   const roleLabel = getCategoryRoleLabel(role) || 'Connections';
   const disciplines = useMemo(() => getDisciplinesForRole(role), [role]);
@@ -103,7 +104,8 @@ export function GuidedSearchWizardScreen() {
   }, [role]);
 
   const locationLabel =
-    LOCATION_OPTIONS.find((o) => o.id === location)?.label ?? 'Choose location';
+    LOCATION_OPTIONS.find((o) => o.id === location)?.label ??
+    (location || 'Choose location');
 
   const canApply = Boolean(location);
 
@@ -204,39 +206,18 @@ export function GuidedSearchWizardScreen() {
         </Pressable>
       </View>
 
-      <BottomSheet
+      <LocationAutocomplete
         visible={locOpen}
-        title="Select Location"
-        subtitle="Choose where you want to find connections."
-        onClose={() => setLocOpen(false)}
-        tall
-      >
-        {LOCATION_OPTIONS.map((opt) => {
-          const active = opt.id === location;
-          return (
-            <Pressable
-              key={opt.id}
-              style={[styles.modalRow, active && styles.modalRowActive]}
-              onPress={() => {
-                setLocation(opt.id);
-                setLocOpen(false);
-              }}
-            >
-              <Text
-                style={[
-                  styles.modalRowText,
-                  active && styles.modalRowTextActive,
-                ]}
-              >
-                {opt.label}
-              </Text>
-              {active ? (
-                <Ionicons name="checkmark" size={18} color={colors.primary} />
-              ) : null}
-            </Pressable>
-          );
-        })}
-      </BottomSheet>
+        initialValue={locValue}
+        onClose={() => {
+          setLocOpen(false);
+          setLocValue(location || '');
+        }}
+        onSelect={(result) => {
+          setLocation(result.formattedAddress || result.name || '');
+          setLocOpen(false);
+        }}
+      />
     </SafeAreaView>
   );
 }

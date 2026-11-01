@@ -104,3 +104,17 @@ export function getWebOrigin() {
 export function getGoogleSuccessReturnUrl() {
   return `${getWebOrigin()}/auth/google-success`;
 }
+
+/** Web OAuth Client ID from Google Cloud Console; required by GoogleSignin.configure. */
+export function getGoogleWebClientId() {
+  return (
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ??
+    (Constants.expoConfig?.extra?.googleWebClientId as string | undefined) ??
+    ''
+  );
+}
+
+/** iOS OAuth Client ID; needed on iOS because we don't ship GoogleService-Info.plist. */
+export function getGoogleIosClientId() {
+  return process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || undefined;
+}

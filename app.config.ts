@@ -11,7 +11,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   userInterfaceStyle: 'light',
   ios: {
     supportsTablet: true,
-    bundleIdentifier: 'com.connexbuild.app',
+    bundleIdentifier: 'com.cobilds.com',
     infoPlist: {
       NSCameraUsageDescription:
         'COBILDS needs camera access to upload profile, project, and message photos.',
@@ -22,7 +22,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     },
   },
   android: {
-    package: 'com.connexbuild.app',
+    package: 'com.cobilds.com',
     // Pan so the chat composer can lift with Reanimated keyboard height
     // without Android also resizing the window (which caused clipping).
     softwareKeyboardLayoutMode: 'pan',
@@ -46,6 +46,14 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     'expo-router',
     'expo-secure-store',
     'expo-font',
+    ...(process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME
+      ? [
+          [
+            '@react-native-google-signin/google-signin',
+            { iosUrlScheme: process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME },
+          ] as [string, { iosUrlScheme: string }],
+        ]
+      : []),
     [
       'expo-splash-screen',
       {
@@ -89,6 +97,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   extra: {
     apiUrl: process.env.EXPO_PUBLIC_API_URL ?? 'https://backendcode-7jad.onrender.com/api',
     webOrigin: process.env.EXPO_PUBLIC_WEB_ORIGIN ?? 'https://www.cobilds.com',
+    googleWebClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '',
     eas: {
       projectId: 'd0549fce-939e-4016-a9ca-d413c75110c1',
     },

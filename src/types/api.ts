@@ -48,6 +48,16 @@ export type ProfessionalProfile = {
   linkedIn?: string;
   instagram?: string;
   twitter?: string;
+  /** Profile badge (models.User.Verified) -- true once Aadhaar OKYC or a
+   *  manual verification is approved. */
+  verified?: boolean;
+  /** BUSINESS_OWNER | EMPLOYEE for Consultants/Contractors/Vendors. */
+  employmentType?: string;
+  /** @deprecated never sent by the backend; use `verified`. */
+  businessVerified?: boolean;
+  businessName?: string;
+  /** Verification badge earned timestamp */
+  verifiedAt?: string;
   [key: string]: unknown;
 };
 
@@ -84,12 +94,26 @@ export type EventItem = {
   coverImage?: string;
   /** Feed author display name (from listFeed). */
   authorName?: string;
+  /** Poster's professional role (feed only), e.g. CONSULTANTS. */
+  ownerRole?: string;
+  /** Poster completed every verification step their role requires (feed only). */
+  ownerVerified?: boolean;
+  /** Poster's identity and GST registration are verified (feed only). */
+  ownerBusinessVerified?: boolean;
   ownerName?: string;
   authorId?: string | number;
   userId?: string | number;
   photoUrls?: string[];
   photos?: string[];
   videoUrl?: string;
+  /** Interaction counts and state */
+  likeCount?: number;
+  likedByMe?: boolean;
+  commentCount?: number;
+  shareCount?: number;
+  sharedByMe?: boolean;
+  /** Nested comments (from event detail) */
+  comments?: Comment[];
   [key: string]: unknown;
 };
 
@@ -103,6 +127,57 @@ export type EventListResponse = {
     totalPages?: number;
     offset?: number;
   };
+};
+
+export type Comment = {
+  id: string | number;
+  eventId: string | number;
+  body: string;
+  createdAt: string;
+  updatedAt?: string;
+  authorId: string | number;
+  authorName: string;
+  authorAvatar?: string;
+  parentCommentId?: string | number;
+  likeCount?: number;
+  likedByMe?: boolean;
+  replies?: Comment[];
+  depth?: number;
+  replyCount?: number;
+  /** Backend returns author info in nested commenter object */
+  commenter?: {
+    userId: string | number;
+    name: string;
+    role?: string;
+  };
+  /** Mentions in this comment */
+  mentions?: Array<{
+    userId: string | number;
+    name: string;
+  }>;
+};
+
+export type CommentListResponse = {
+  comments?: Comment[];
+  count?: number;
+  pagination?: {
+    page?: number;
+    limit?: number;
+    total?: number;
+    totalPages?: number;
+    offset?: number;
+  };
+};
+
+export type LikeResponse = {
+  liked: boolean;
+  likeCount: number;
+};
+
+export type ShareResponse = {
+  shared: boolean;
+  shareCount: number;
+  shareUrl?: string;
 };
 
 export type Conversation = {
@@ -252,3 +327,115 @@ export type SupportCase = {
   status?: string;
   [key: string]: unknown;
 };
+
+/** Verification types matching backend */
+export type VerificationRequestType = 'AADHAAR' | 'GST_TAN' | 'LICENSE' | 'EMPLOYEE';
+export type VerificationStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+export type GSTVerificationStatus = 'PENDING' | 'VERIFIED' | 'MISMATCH' | 'INACTIVE' | 'FAILED' | '';
+
+export interface GSTVerificationResult {
+  status: GSTVerificationStatus;
+  gstin: string;
+  maskedGstin: string;
+  legalName?: string;
+  tradeName?: string;
+  panNumber?: string;
+  constitutionOfBusiness?: string;
+  taxpayerType?: string;
+  gstinStatus?: string;
+  registrationDate?: string;
+  cancellationDate?: string;
+  stateJurisdiction?: string;
+  centreJurisdiction?: string;
+  principalAddress?: {
+    fullAddress?: string;
+    city?: string;
+    state?: string;
+    pincode?: string;
+    country?: string;
+  } | null;
+  natureOfBusiness?: string[];
+  failureReason?: string;
+  attemptsRemaining: number;
+  retryAfter?: string;
+}
+
+export interface VerificationRequestSummary {
+  id: number;
+  status: VerificationStatus;
+  type: VerificationRequestType;
+  companyLegalName?: string;
+  legalName?: string;
+  companyEmail?: string;
+  linkedMobile?: string;
+  registeredOffice?: string;
+  registeredEmail?: string;
+  registeredContact?: string;
+  registeredServiceType?: string;
+  licensingAuthority?: string;
+  certifications?: string;
+  maskedNumber?: string;
+  maskedLicenseNumber?: string;
+  documentUrls?: string[];
+  rejectionReason?: string;
+  submittedAt: string;
+  reviewedAt?: string;
+}
+
+export interface EmployeeEmailVerificationStatus {
+  email: string;
+  verified: boolean;
+  codePending: boolean;
+}
+
+export interface VerificationStatusResponse {
+  aadhaar: VerificationRequestSummary | null;
+  aadhaarAttemptsRemaining?: number;
+  aadhaarRetryAfter?: string;
+  gstTan: VerificationRequestSummary | null;
+  license: VerificationRequestSummary | null;
+  employee: VerificationRequestSummary | null;
+  employeeEmail: EmployeeEmailVerificationStatus | null;
+  gst: GSTVerificationResult | null;
+}
+
+export interface AadhaarOTPGenerateResponse {
+  message: string;
+  session_id: string;
+}
+
+export interface AadhaarOTPVerifyResponse {
+  status: string;
+  message: string;
+  kyc_data?: {
+    verified?: boolean;
+    aadhaar_masked?: string;
+    name?: string;
+    dob?: string;
+    gender?: string;
+    care_of?: string;
+    address?: {
+      house?: string;
+      street?: string;
+      landmark?: string;
+      locality?: string;
+      vtc?: string;
+      subdist?: string;
+      district?: string;
+      state?: string;
+      pincode?: string;
+      post?: string;
+      country?: string;
+    } | null;
+    photo?: string | null;
+    photo_mime?: string | null;
+    share_code?: string;
+    email?: string | null;
+    mobile?: string | null;
+    reference_id?: string;
+    transaction_id?: string;
+    generated_at?: string;
+    failure_code?: string | null;
+    failure_reason?: string | null;
+  } | null;
+}

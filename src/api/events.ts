@@ -1,5 +1,19 @@
 import { apiClient, API_BASE_URL } from '@/src/api/client';
-import type { EventItem, EventListResponse } from '@/src/types/api';
+import type { EventItem, EventListResponse, Comment, CommentListResponse, LikeResponse, ShareResponse } from '@/src/types/api';
+
+export { apiClient } from '@/src/api/client';
+export { verificationApi } from '@/src/api/verification';
+export type {
+  VerificationStatusResponse,
+  AadhaarOTPGenerateResponse,
+  AadhaarOTPVerifyResponse,
+  GSTVerificationResult,
+  VerificationRequestSummary,
+  EmployeeEmailVerificationStatus,
+  VerificationRequestType,
+  VerificationStatus,
+  GSTVerificationStatus,
+} from '@/src/types/api';
 
 const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
 
@@ -165,4 +179,43 @@ export const eventsApi = {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       .then((r) => r.data),
+
+  // ── Interactions ──────────────────────────────────────────────────────
+  likeEvent: (id: string | number) =>
+    apiClient.post<LikeResponse>(`/events/${id}/likes`).then((r) => r.data),
+
+  unlikeEvent: (id: string | number) =>
+    apiClient.delete<LikeResponse>(`/events/${id}/likes`).then((r) => r.data),
+
+  getEventLikes: (id: string | number) =>
+    apiClient.get<LikeResponse>(`/events/${id}/likes`).then((r) => r.data),
+
+  addComment: (id: string | number, body: string, parentCommentId?: string | number, mentionedUserIds?: (string | number)[]) =>
+    apiClient
+      .post<Comment>(`/events/${id}/comments`, { body, parentCommentId, mentionedUserIds })
+      .then((r) => r.data),
+
+  getEventComments: (id: string | number, limit = 20, page = 1) =>
+    apiClient
+      .get<CommentListResponse>(`/events/${id}/comments`, { params: { limit, page } })
+      .then((r) => r.data),
+
+  getEventCommentCount: (id: string | number) =>
+    apiClient
+      .get<{ count: number }>(`/events/${id}/comments/count`)
+      .then((r) => r.data.count ?? 0),
+
+  shareEvent: (id: string | number) =>
+    apiClient.post<ShareResponse>(`/events/${id}/share`).then((r) => r.data),
+
+  unshareEvent: (id: string | number) =>
+    apiClient.delete<ShareResponse>(`/events/${id}/share`).then((r) => r.data),
+
+  getEventShares: (id: string | number) =>
+    apiClient.get<ShareResponse>(`/events/${id}/shares`).then((r) => r.data),
+
+  getEventShareCount: (id: string | number) =>
+    apiClient
+      .get<{ count: number }>(`/events/${id}/shares/count`)
+      .then((r) => r.data.count ?? 0),
 };

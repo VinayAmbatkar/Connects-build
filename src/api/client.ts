@@ -19,8 +19,14 @@ const SENSITIVE_KEYS = new Set([
   'refreshToken',
   'accessToken',
   'token',
+  'idToken',
   'code',
   'otp',
+  // KYC: never print identity numbers or live OTP sessions in dev logs.
+  'aadhaar_number',
+  'aadharNumber',
+  'session_id',
+  'kyc_data',
 ]);
 
 type TimedRequestConfig = InternalAxiosRequestConfig & {

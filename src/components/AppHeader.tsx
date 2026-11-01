@@ -99,7 +99,7 @@ export function AppHeader({
 
   return (
     <>
-      <View style={[styles.wrap, { paddingTop: Math.max(insets.top, spacing.sm) }]}>
+      <View style={[styles.wrap, { paddingTop: insets.top + 6 }]}>
         <View style={styles.topRow}>
           <Pressable
             style={styles.brand}
@@ -107,7 +107,7 @@ export function AppHeader({
             accessibilityLabel="Open menu"
             hitSlop={6}
           >
-            <LogoMark size={36} />
+            <LogoMark size={30} />
             <View style={styles.brandCopy}>
               <Text style={styles.brandName}>COBILDS</Text>
               <Text style={styles.brandSub}>NETWORK</Text>
@@ -121,7 +121,7 @@ export function AppHeader({
               hitSlop={6}
               accessibilityLabel="Notifications"
             >
-              <Ionicons name="notifications-outline" size={24} color={colors.text} />
+              <Ionicons name="notifications-outline" size={22} color={colors.text} />
               <Badge count={notifCount} />
             </Pressable>
 
@@ -131,7 +131,7 @@ export function AppHeader({
               hitSlop={6}
               accessibilityLabel="Messages"
             >
-              <Ionicons name="chatbubble-ellipses-outline" size={23} color={colors.text} />
+              <Ionicons name="chatbubble-ellipses-outline" size={21} color={colors.text} />
               <Badge count={messageCount} />
             </Pressable>
 
@@ -142,7 +142,7 @@ export function AppHeader({
                 hitSlop={6}
                 accessibilityLabel="Profile menu"
               >
-                <Avatar name={user?.fullName ?? 'You'} size={34} />
+                <Avatar name={user?.fullName ?? 'You'} size={30} />
                 <Ionicons
                   name={profileMenuOpen ? 'chevron-up' : 'chevron-down'}
                   size={14}
@@ -158,7 +158,7 @@ export function AppHeader({
             style={styles.searchBar}
             onPress={onSearchChange ? undefined : openSearch}
           >
-            <Ionicons name="search-outline" size={18} color={colors.textMuted} />
+            <Ionicons name="search-outline" size={17} color={colors.textSecondary} />
             {onSearchChange ? (
               <TextInput
                 style={styles.searchInput}
@@ -179,7 +179,7 @@ export function AppHeader({
               hitSlop={8}
               accessibilityLabel="Search filters"
             >
-              <Ionicons name="options-outline" size={18} color={colors.textMuted} />
+              <Ionicons name="options-outline" size={17} color={colors.textSecondary} />
             </Pressable>
           </Pressable>
         ) : null}
@@ -231,13 +231,14 @@ const styles = StyleSheet.create({
   wrap: {
     backgroundColor: colors.white,
     paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
+    paddingBottom: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
-    gap: spacing.md,
+    gap: 10,
     zIndex: 20,
   },
   topRow: {
+    height: 40,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -246,7 +247,7 @@ const styles = StyleSheet.create({
   brand: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: spacing.sm,
     flexShrink: 1,
   },
   brandCopy: {
@@ -254,15 +255,16 @@ const styles = StyleSheet.create({
   },
   brandName: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: 18,
+    fontSize: 16,
+    lineHeight: 18,
     color: colors.text,
     letterSpacing: 0.2,
     includeFontPadding: false,
   },
   brandSub: {
-    marginTop: 1,
     fontFamily: typography.fontFamily.bold,
-    fontSize: 10,
+    fontSize: 9,
+    lineHeight: 11,
     color: colors.primary,
     letterSpacing: 1.6,
     includeFontPadding: false,
@@ -270,18 +272,18 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 2,
   },
   iconBtn: {
-    width: 40,
-    height: 40,
+    width: 38,
+    height: 38,
     alignItems: 'center',
     justifyContent: 'center',
   },
   badge: {
     position: 'absolute',
-    top: 4,
-    right: 2,
+    top: 3,
+    right: 3,
     minWidth: 16,
     height: 16,
     paddingHorizontal: 4,
@@ -302,20 +304,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
-    marginLeft: 2,
-    paddingVertical: 4,
-    paddingLeft: 4,
+    marginLeft: 4,
+    paddingVertical: 2,
+    paddingLeft: 2,
   },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    minHeight: 44,
-    paddingHorizontal: 14,
+    gap: spacing.sm,
+    height: 38,
+    paddingHorizontal: 12,
     borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.white,
+    backgroundColor: colors.surfaceMuted,
   },
   searchInput: {
     flex: 1,
@@ -323,12 +323,14 @@ const styles = StyleSheet.create({
     fontSize: typography.size.sm,
     color: colors.text,
     paddingVertical: 0,
+    includeFontPadding: false,
   },
   searchPlaceholder: {
     flex: 1,
     fontFamily: typography.fontFamily.regular,
     fontSize: typography.size.sm,
-    color: colors.textMuted,
+    color: colors.textSecondary,
+    includeFontPadding: false,
   },
   menuRoot: {
     flex: 1,

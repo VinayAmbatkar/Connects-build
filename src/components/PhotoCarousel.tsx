@@ -18,6 +18,9 @@ import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 type Props = {
   urls: string[];
   height?: number;
+  /** Width / height. When set, height follows the measured width so every
+   * post renders at the same shape regardless of screen size. */
+  aspectRatio?: number;
   /** Called when the user taps the active photo. */
   onPress?: (index: number) => void;
   style?: StyleProp<ViewStyle>;
@@ -30,7 +33,8 @@ const DEFAULT_WIDTH = Dimensions.get('window').width;
 
 export function PhotoCarousel({
   urls,
-  height = 280,
+  height: fixedHeight = 280,
+  aspectRatio,
   onPress,
   style,
   borderRadius = 0,
@@ -38,6 +42,7 @@ export function PhotoCarousel({
 }: Props) {
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [index, setIndex] = useState(0);
+  const height = aspectRatio ? Math.round((width || DEFAULT_WIDTH) / aspectRatio) : fixedHeight;
 
   const onScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {

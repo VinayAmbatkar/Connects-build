@@ -34,5 +34,8 @@ export const authApi = {
       .post('/auth/change-password', { currentPassword, newPassword })
       .then((r) => r.data),
 
-  googleLoginUrl: () => `${apiClient.defaults.baseURL}/auth/google/login`,
+  googleNativeLogin: (idToken: string) =>
+    apiClient
+      .post<LoginResponse>('/auth/google/native', { idToken })
+      .then((r) => r.data),
 };

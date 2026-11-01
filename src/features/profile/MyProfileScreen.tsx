@@ -26,6 +26,9 @@ import {
 } from '@/src/features/profile/RoleExpertiseSection';
 import { getTopSkillLabels } from '@/src/features/profile/profileSkills';
 import { TopSkillsCard } from '@/src/features/profile/TopSkillsCard';
+import { BusinessVerificationCard } from '@/src/features/profile/BusinessVerificationCard';
+import { resolveKycFlow } from '@/src/features/verification/kycLogic';
+import { useKycProgress } from '@/src/features/verification/useKycVerification';
 import {
   normalizeOptions,
   resolveOptionLabel,
@@ -36,6 +39,7 @@ import type { ProfessionalProfile } from '@/src/types/api';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
 const LINKEDIN_BLUE = '#0A66C2';
+const VERIFY_BLUE = '#1E3A8A';
 
 function ExperienceIcon() {
   return (
@@ -79,6 +83,11 @@ export function MyProfileScreen() {
     queryFn: projectsApi.listMine,
   });
 
+  const { progress: kycProgress, isLoading: kycLoading } = useKycProgress(
+    resolveKycFlow(profileQuery.data?.role ?? user?.role, profileQuery.data?.employmentType),
+    profileQuery.data?.verified,
+  );
+
   const changeTab = (tab: ProfileContentTab) => {
     setContentTab(tab);
     scrollRef.current?.scrollTo({ y: 0, animated: false });
@@ -120,6 +129,13 @@ export function MyProfileScreen() {
   const topSkills = getTopSkillLabels(profile, optionsQuery.data);
   const events = Array.isArray(eventsQuery.data) ? eventsQuery.data : [];
   const projects = Array.isArray(projectsQuery.data) ? projectsQuery.data : [];
+
+  // Consumers are verified by Aadhaar alone; business owners and employees
+  // only once GST / work email is done too.
+  const isVerified = kycProgress.complete;
+  // Hold the card back until status is known, so a fully verified business
+  // account doesn't flash "Get Verified" first.
+  const showVerificationCard = !isVerified && !kycLoading;
 
   const openEdit = () => router.push('/edit-profile');
   const openEditAbout = () => router.push('/edit-about');
@@ -163,7 +179,14 @@ export function MyProfileScreen() {
             </Pressable>
           </View>
 
-          <Text style={styles.name}>{name}</Text>
+          <Text style={styles.name}>
+            {name}
+            {isVerified && (
+              <Text style={styles.verifiedBadge}>
+                <Ionicons name="shield-checkmark" size={14} color={VERIFY_BLUE} />
+              </Text>
+            )}
+          </Text>
 
           {role ? <Text style={styles.headline}>{role}</Text> : null}
           {metaLine ? <Text style={styles.subline}>{metaLine}</Text> : null}
@@ -187,6 +210,12 @@ export function MyProfileScreen() {
         <View style={styles.tabPanel}>
           {contentTab === 'overview' ? (
             <>
+              {showVerificationCard && (
+                <BusinessVerificationCard
+                  progress={kycProgress}
+                  onPress={() => router.push('/verification')}
+                />
+              )}
               <View style={styles.aboutCard}>
                 <View style={styles.aboutHeader}>
                   <Text style={styles.aboutTitle}>About</Text>
@@ -356,6 +385,12 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     color: colors.text,
     letterSpacing: 0.4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  verifiedBadge: {
+    paddingTop: 2,
   },
   headline: {
     marginTop: 4,

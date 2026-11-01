@@ -51,3 +51,44 @@ export function formatAboutPreview(bio: string, maxLength = ABOUT_PREVIEW_MAX) {
     truncated: true,
   };
 }
+
+const POST_ROLE_LABELS: Record<string, string> = {
+  CONSULTANTS: 'Consultants',
+  CONTRACTORS: 'Contractors',
+  BUILDERS: 'Builders',
+  BUILDERS_CONTRACTORS: 'Builders & Contractors',
+  VENDORS: 'Vendors',
+  CONSUMER: 'Consumer',
+  CUSTOMER: 'Consumer',
+  OTHERS: 'Professional',
+};
+
+/** "CONSULTANTS" -> "Consultants"; unknown values are title-cased. */
+export function formatRoleLabel(role?: string | null): string {
+  const key = role?.trim().toUpperCase();
+  if (!key) return '';
+  return (
+    POST_ROLE_LABELS[key] ??
+    key
+      .split('_')
+      .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
+      .join(' ')
+  );
+}
+
+/** Compact engagement counts: 999, 1.2K, 12K, 1.5M. */
+export function formatCount(value: number): string {
+  if (!Number.isFinite(value) || value < 1000) return String(Math.max(0, Math.floor(value || 0)));
+  const units: [number, string][] = [
+    [1_000_000, 'M'],
+    [1_000, 'K'],
+  ];
+  for (const [size, suffix] of units) {
+    if (value >= size) {
+      const scaled = value / size;
+      const text = scaled >= 10 ? Math.floor(scaled).toString() : (Math.floor(scaled * 10) / 10).toString();
+      return `${text}${suffix}`;
+    }
+  }
+  return String(value);
+}
