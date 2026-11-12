@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Dimensions,
   FlatList,
@@ -27,21 +27,41 @@ type Props = {
   borderRadius?: number;
   /** `contain` shows the full photo; `cover` fills and may crop. */
   resizeMode?: ImageResizeMode;
+  backgroundColor?: string;
 };
 
 const DEFAULT_WIDTH = Dimensions.get('window').width;
 
 export function PhotoCarousel({
-  urls,
+  urls: allUrls,
   height: fixedHeight = 280,
   aspectRatio,
   onPress,
   style,
   borderRadius = 0,
   resizeMode = 'cover',
+  backgroundColor = '#111827',
 }: Props) {
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [index, setIndex] = useState(0);
+
+  // Photos that failed to load (deleted from storage, bad URL, unsupported
+  // format) are dropped instead of leaving an empty dark box; if every
+  // photo fails, the carousel renders nothing at all.
+  const [failed, setFailed] = useState<ReadonlySet<string>>(() => new Set());
+  const urlsKey = allUrls.join('|');
+  useEffect(() => {
+    setFailed(new Set());
+    setIndex(0);
+  }, [urlsKey]);
+  const urls = useMemo(() => allUrls.filter((u) => !failed.has(u)), [allUrls, failed]);
+  const onImageError = useCallback((uri: string, error: unknown) => {
+    if (__DEV__) {
+      console.warn('[PhotoCarousel] image failed to load', uri, error);
+    }
+    setFailed((prev) => (prev.has(uri) ? prev : new Set(prev).add(uri)));
+  }, []);
+
   const height = aspectRatio ? Math.round((width || DEFAULT_WIDTH) / aspectRatio) : fixedHeight;
 
   const onScroll = useCallback(
@@ -56,16 +76,18 @@ export function PhotoCarousel({
   );
 
   if (!urls.length) return null;
+  const shownIndex = Math.min(index, urls.length - 1);
 
   const renderImage = (uri: string, photoIndex: number) => (
     <Pressable
       onPress={() => onPress?.(photoIndex)}
-      style={[styles.slide, { width: width || DEFAULT_WIDTH, height }]}
+      style={[styles.slide, { width: width || DEFAULT_WIDTH, height, backgroundColor }]}
     >
       <Image
         source={{ uri }}
         style={styles.image}
         resizeMode={resizeMode}
+        onError={(e) => onImageError(uri, e.nativeEvent?.error)}
         accessibilityLabel={`Photo ${photoIndex + 1} of ${urls.length}`}
       />
     </Pressable>
@@ -73,7 +95,7 @@ export function PhotoCarousel({
 
   return (
     <View
-      style={[styles.wrap, { height, borderRadius }, style]}
+      style={[styles.wrap, { height, borderRadius, backgroundColor }, style]}
       onLayout={(e) => {
         const nextWidth = e.nativeEvent.layout.width;
         if (nextWidth > 0 && Math.abs(nextWidth - width) > 1) {
@@ -108,12 +130,12 @@ export function PhotoCarousel({
         <>
           <View style={styles.counter}>
             <Text style={styles.counterText}>
-              {index + 1}/{urls.length}
+              {shownIndex + 1}/{urls.length}
             </Text>
           </View>
           <View style={styles.dots}>
             {urls.map((_, i) => (
-              <View key={i} style={[styles.dot, i === index && styles.dotActive]} />
+              <View key={i} style={[styles.dot, i === shownIndex && styles.dotActive]} />
             ))}
           </View>
         </>

@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
   Image,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,7 +12,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '@/src/components/Avatar';
-import { LoadingState } from '@/src/components/EmptyState';
+
 import { TextField } from '@/src/components/TextField';
 import { getErrorMessage } from '@/src/api/client';
 import { profileApi } from '@/src/api/profile';
@@ -29,6 +27,8 @@ import { BIO_MAX_LENGTH } from '@/src/features/profile/profileSkills';
 import type { ProfessionalProfile, Project } from '@/src/types/api';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
+import { appAlert } from '@/src/components/AppDialog';
+import { DetailSkeleton } from '@/src/components/Skeleton';
 const MAIN_TABS = [
   {
     id: 'professional',
@@ -169,7 +169,6 @@ export function EditProfileScreen() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<MainTabId>(() => parseMainTab(params.tab));
   const [form, setForm] = useState<ProfessionalProfile>({});
-  const [rolePickerOpen, setRolePickerOpen] = useState(false);
 
   const profileQuery = useQuery({
     queryKey: ['my-profile'],
@@ -253,12 +252,14 @@ export function EditProfileScreen() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['my-profile'] });
-      Alert.alert('Saved', 'Your profile was updated.');
+      // Employment type decides the verification flow.
+      void queryClient.invalidateQueries({ queryKey: ['verification-status'] });
+      appAlert('Saved', 'Your profile was updated.');
     },
-    onError: (error) => Alert.alert('Save failed', getErrorMessage(error)),
+    onError: (error) => appAlert('Save failed', getErrorMessage(error)),
   });
 
-  if (profileQuery.isLoading) return <LoadingState />;
+  if (profileQuery.isLoading) return <DetailSkeleton />;
 
   const set = (key: keyof ProfessionalProfile, value: string) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -278,13 +279,12 @@ export function EditProfileScreen() {
             <Text style={styles.fieldLabel}>
               Role / Designation<Text style={styles.required}> *</Text>
             </Text>
-            <Pressable style={styles.selectField} onPress={() => setRolePickerOpen(true)}>
-              <Ionicons name="briefcase-outline" size={18} color={colors.textSecondary} />
-              <Text style={styles.selectValue} numberOfLines={1}>
+            <View style={styles.selectFieldDisabled}>
+              <Ionicons name="briefcase-outline" size={18} color={colors.textMuted} />
+              <Text style={styles.selectValueDisabled} numberOfLines={1}>
                 {selectedRoleLabel}
               </Text>
-              <Ionicons name="chevron-down" size={18} color={colors.textMuted} />
-            </Pressable>
+            </View>
 
             <TextField
               label="Full Name"
@@ -454,40 +454,6 @@ export function EditProfileScreen() {
         </Pressable>
       </View>
 
-      <Modal visible={rolePickerOpen} transparent animationType="fade">
-        <Pressable style={styles.modalBackdrop} onPress={() => setRolePickerOpen(false)}>
-          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.modalTitle}>Select role</Text>
-            <ScrollView style={styles.modalList}>
-              {roleOptions.map((option) => {
-                const active =
-                  form.role === option.id ||
-                  form.role === option.label ||
-                  selectedRoleLabel === option.label;
-                return (
-                  <Pressable
-                    key={option.id}
-                    style={[styles.modalOption, active && styles.modalOptionActive]}
-                    onPress={() => {
-                      setForm((prev) => ({ ...prev, role: option.id }));
-                      setRolePickerOpen(false);
-                    }}
-                  >
-                    <Text
-                      style={[styles.modalOptionText, active && styles.modalOptionTextActive]}
-                    >
-                      {option.label}
-                    </Text>
-                    {active ? (
-                      <Ionicons name="checkmark" size={18} color={colors.primary} />
-                    ) : null}
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </Pressable>
-        </Pressable>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -670,7 +636,7 @@ const styles = StyleSheet.create({
   required: {
     color: colors.danger,
   },
-  selectField: {
+  selectFieldDisabled: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
@@ -680,13 +646,13 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.white,
+    backgroundColor: colors.surfaceMuted,
   },
-  selectValue: {
+  selectValueDisabled: {
     flex: 1,
     fontFamily: typography.fontFamily.medium,
     fontSize: typography.size.sm,
-    color: colors.text,
+    color: colors.textMuted,
   },
   groupBlock: {
     marginBottom: spacing.lg,
@@ -799,46 +765,5 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.bold,
     fontSize: typography.size.md,
     color: colors.white,
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: colors.overlay,
-    justifyContent: 'center',
-    padding: spacing.lg,
-  },
-  modalCard: {
-    maxHeight: '70%',
-    backgroundColor: colors.white,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-  },
-  modalTitle: {
-    marginBottom: spacing.sm,
-    fontFamily: typography.fontFamily.bold,
-    fontSize: typography.size.lg,
-    color: colors.text,
-  },
-  modalList: {
-    maxHeight: 360,
-  },
-  modalOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.sm,
-  },
-  modalOptionActive: {
-    backgroundColor: colors.primaryMuted,
-  },
-  modalOptionText: {
-    flex: 1,
-    fontFamily: typography.fontFamily.medium,
-    fontSize: typography.size.sm,
-    color: colors.text,
-  },
-  modalOptionTextActive: {
-    color: colors.primaryDark,
   },
 });

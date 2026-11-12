@@ -1,9 +1,18 @@
 import { ConfigContext, ExpoConfig } from 'expo/config';
 
+// Firebase config Android needs for push (FCM), Firebase project
+// cobilds-prod. Committed on purpose: it holds no secrets. Set
+// GOOGLE_SERVICES_JSON (e.g. an EAS "file" env var) to use a different one.
+const googleServicesFile =
+  process.env.GOOGLE_SERVICES_JSON ?? './google-services.json';
+
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: 'COBILDS',
+  // EAS can't rename a project's slug; this must stay 'connexbuild' to
+  // match @cobilds/connexbuild (its dashboard display name is COBILDS).
   slug: 'connexbuild',
+  owner: 'cobilds',
   version: '1.0.0',
   orientation: 'portrait',
   icon: './assets/images/icon.png',
@@ -19,13 +28,17 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         'COBILDS needs photo library access to upload images to your profile and feed.',
       NSPhotoLibraryAddUsageDescription:
         'COBILDS may save images you choose to share.',
+      // UPI intent apps Razorpay Checkout can hand off to (Razorpay's
+      // documented list for iOS).
+      LSApplicationQueriesSchemes: ['tez', 'phonepe', 'paytmmp'],
     },
   },
   android: {
     package: 'com.cobilds.com',
-    // Pan so the chat composer can lift with Reanimated keyboard height
-    // without Android also resizing the window (which caused clipping).
-    softwareKeyboardLayoutMode: 'pan',
+    // Resize the available chat area with the keyboard so the message list
+    // and composer move together instead of applying a second manual lift.
+    softwareKeyboardLayoutMode: 'resize',
+    googleServicesFile,
     adaptiveIcon: {
       backgroundColor: '#FFFFFF',
       foregroundImage: './assets/images/android-icon-foreground.png',
@@ -46,6 +59,17 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     'expo-router',
     'expo-secure-store',
     'expo-font',
+    // In-app video playback for post videos (VideoPlayer). No background
+    // playback or picture-in-picture needed, so no options.
+    'expo-video',
+    [
+      'expo-notifications',
+      {
+        icon: './assets/images/android-icon-monochrome.png',
+        color: '#F57D01',
+        defaultChannel: 'activity',
+      },
+    ],
     ...(process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME
       ? [
           [
@@ -86,6 +110,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
             '-keep class com.swmansion.reanimated.** { *; }',
             '-keep class com.swmansion.worklets.** { *; }',
             '-keep class com.facebook.react.turbomodule.** { *; }',
+            // Razorpay Checkout SDK (react-native-razorpay) -- the keep
+            // rules from Razorpay's Android integration docs.
+            '-keepclassmembers class * { @android.webkit.JavascriptInterface <methods>; }',
+            '-keepattributes JavascriptInterface',
+            '-keepattributes *Annotation*',
+            '-dontwarn com.razorpay.**',
+            '-keep class com.razorpay.** { *; }',
+            '-optimizations !method/inlining/*',
+            '-keepclasseswithmembers class * { public void onPayment*(...); }',
           ].join('\n'),
         },
       },
@@ -95,7 +128,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     typedRoutes: true,
   },
   extra: {
-    apiUrl: process.env.EXPO_PUBLIC_API_URL ?? 'https://backendcode-7jad.onrender.com/api',
+    apiUrl: process.env.EXPO_PUBLIC_API_URL ?? 'https://stagging-backend-tcgym.ondigitalocean.app/api',
     webOrigin: process.env.EXPO_PUBLIC_WEB_ORIGIN ?? 'https://www.cobilds.com',
     googleWebClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '',
     eas: {

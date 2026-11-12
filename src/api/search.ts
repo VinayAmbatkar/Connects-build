@@ -84,10 +84,15 @@ export const searchApi = {
 
   category: (params: {
     role?: string;
+    /** Comma-separated project type codes (multi-select). */
     projectType?: string;
+    /** Multi-select type/category groups: "TYPE:CAT|CAT,TYPE" (see
+     *  toCategoryParam). Supersedes discipline/specialization. */
+    category?: string;
     discipline?: string;
     specialization?: string;
     location?: string;
+    place_id?: string;
     page?: number;
     limit?: number;
   }) =>

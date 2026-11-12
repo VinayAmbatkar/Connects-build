@@ -27,6 +27,7 @@ export const ROLE_IMAGES = {
   Vendor: require('../../assets/images/Roles/Vendor.webp'),
   Contractor: require('../../assets/images/Roles/contractor.webp'),
   Architect: require('../../assets/images/Roles/architect.webp'),
+  Consumer: require('../../assets/images/Roles/consumer.png'),
 } as const;
 
 export const DEFAULT_ROLES: AppRole[] = [
@@ -39,14 +40,14 @@ export const DEFAULT_ROLES: AppRole[] = [
   {
     value: 'Builder',
     label: 'Builder',
-    description: 'I build and deliver construction projects',
+    description: 'I build and develop construction projects',
     image: ROLE_IMAGES.Builder,
   },
   {
-    value: 'Vendor',
-    label: 'Vendor',
-    description: 'I supply materials and products for projects',
-    image: ROLE_IMAGES.Vendor,
+    value: 'Consumer',
+    label: 'Consumer',
+    description: "I'm a home or property owner looking to build, renovate, or hire professionals",
+    image: ROLE_IMAGES.Consumer,
   },
   {
     value: 'Contractor',
@@ -61,10 +62,10 @@ export const DEFAULT_ROLES: AppRole[] = [
     image: ROLE_IMAGES.Architect,
   },
   {
-    value: 'Engineer',
-    label: 'Engineer',
-    description: 'I deliver structural and MEP expertise',
-    icon: 'settings-outline',
+    value: 'Vendor',
+    label: 'Vendor',
+    description: 'I supply materials and products for projects',
+    image: ROLE_IMAGES.Vendor,
   },
 ];
 
@@ -87,7 +88,7 @@ export function getApiUrl() {
   return (
     process.env.EXPO_PUBLIC_API_URL ??
     (Constants.expoConfig?.extra?.apiUrl as string | undefined) ??
-    'https://backendcode-7jad.onrender.com/api'
+    'https://stagging-backend-tcgym.ondigitalocean.app/api'
   );
 }
 

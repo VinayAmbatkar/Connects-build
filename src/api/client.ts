@@ -1,11 +1,13 @@
 import { useAuthStore } from '@/src/store/authStore';
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import Constants from 'expo-constants';
+import { getFeatureLocked, showFeatureLockedPrompt } from '@/src/features/billing/featureLocked';
+import { CLIENT_FEATURES } from '@/src/api/freemium';
 
 const apiUrl =
   process.env.EXPO_PUBLIC_API_URL ??
   (Constants.expoConfig?.extra?.apiUrl as string | undefined) ??
-  'https://backendcode-7jad.onrender.com/api';
+  'https://stagging-backend-tcgym.ondigitalocean.app/api';
 
 export const API_BASE_URL = apiUrl.replace(/\/$/, '');
 
@@ -139,6 +141,22 @@ apiClient.interceptors.request.use((config: TimedRequestConfig) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  // Freemium: this version renders "Claim it free" offers and nudges, and
+  // all their text comes from the backend in this language. Older app
+  // versions don't send these, and the backend claims for them instead.
+  config.headers['X-Client-Features'] = CLIENT_FEATURES;
+  config.headers['X-App-Language'] = 'en';
+
+  // If the request body is FormData, delete the Content-Type header so
+  // axios can set it automatically with the correct boundary.
+  // In React Native, FormData detection via instanceof can be unreliable,
+  // so we also check the constructor name.
+  const data = config.data;
+  const isFormData = data instanceof FormData ||
+    (data && typeof data === 'object' && data.constructor?.name === 'FormData');
+  if (isFormData) {
+    delete config.headers['Content-Type'];
+  }
 
   if (API_LOG_ENABLED) {
     config._apiLogStart = Date.now();
@@ -202,6 +220,13 @@ apiClient.interceptors.response.use(
       }
     }
 
+    // Plan gate (BILLING_ENFORCE): explain it and offer the upgrade from
+    // one place, whichever screen made the call.
+    const locked = getFeatureLocked(error);
+    if (locked) {
+      showFeatureLockedPrompt(locked);
+    }
+
     return Promise.reject(error);
   },
 );
@@ -210,6 +235,20 @@ export function isNetworkError(error: unknown): boolean {
   if (!axios.isAxiosError(error)) return false;
   if (!error.response) return true;
   return error.code === 'ECONNABORTED' || error.message === 'Network Error';
+}
+
+/** Fit to show a person: non-empty, not markup, not a stack of text. */
+function isShortMessage(text: string): boolean {
+  const t = text.trim();
+  return t.length > 0 && t.length <= 240 && !/<\/?(html|body|head|!doctype|div|p)\b/i.test(t);
+}
+
+/** The error code the backend attached to a failed request (e.g.
+ *  "USER_NOT_FOUND"), if any. */
+export function getErrorCode(error: unknown): string | undefined {
+  if (!axios.isAxiosError(error)) return undefined;
+  const data = error.response?.data as { code?: unknown } | undefined;
+  return data && typeof data === 'object' && typeof data.code === 'string' ? data.code : undefined;
 }
 
 export function getErrorMessage(error: unknown, fallback = 'Something went wrong'): string {
@@ -225,11 +264,15 @@ export function getErrorMessage(error: unknown, fallback = 'Something went wrong
       | { message?: string; error?: string }
       | string
       | undefined;
-    if (typeof data === 'string' && data.trim()) return data;
+    // A text body is shown only when it reads like a message. An HTML page
+    // (e.g. a proxy error, or a redirect the client followed) or a wall of
+    // text used to be dumped straight into the alert.
+    if (typeof data === 'string' && isShortMessage(data)) return data.trim();
     if (data && typeof data === 'object') {
-      if (data.message) return data.message;
-      if (data.error) return data.error;
+      if (data.message && isShortMessage(data.message)) return data.message;
+      if (data.error && isShortMessage(data.error)) return data.error;
     }
+    if (typeof data === 'string' || data) return fallback;
     return error.message || fallback;
   }
   if (error instanceof Error) return error.message;

@@ -1,5 +1,6 @@
 import { authApi } from '@/src/api/auth';
 import { getErrorMessage } from '@/src/api/client';
+import { unregisterPushAsync } from '@/src/notifications/push';
 import { useAuthStore } from '@/src/store/authStore';
 import type { LoginResponse } from '@/src/types/api';
 
@@ -43,6 +44,8 @@ export function useAuthActions() {
 
   const logout = async () => {
     try {
+      // Before the session is revoked: unregistering needs a valid token.
+      await unregisterPushAsync();
       if (refreshToken) {
         await authApi.logout(refreshToken);
       }

@@ -13,14 +13,31 @@
         "EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME": "com.googleusercontent.apps.733203412675-joc0m6f7ad7l4f4uj3s01sjug9vij77a"
       }
     },
-    "preview": {
+    "staging": {
       "distribution": "internal",
       "android": {
         "buildType": "apk"
       },
       "env": {
         "MAX_APP_SIZE_MB": "30",
-        "EXPO_PUBLIC_API_URL": "https://backendcode-7jad.onrender.com/api",
+        "EXPO_PUBLIC_API_URL": "https://stagging-backend-tcgym.ondigitalocean.app/api",
+        "EXPO_PUBLIC_WEB_ORIGIN": "https://www.cobilds.com",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "823573786140-qi85a2ic1vm67op501lhkq48k78aqosh.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "733203412675-joc0m6f7ad7l4f4uj3s01sjug9vij77a.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME": "com.googleusercontent.apps.733203412675-joc0m6f7ad7l4f4uj3s01sjug9vij77a"
+      }
+    },
+    "preview": {
+      "extends": "staging"
+    },
+    "production-apk": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "MAX_APP_SIZE_MB": "30",
+        "EXPO_PUBLIC_API_URL": "https://cobilds.cloud.run/api",
         "EXPO_PUBLIC_WEB_ORIGIN": "https://www.cobilds.com",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "823573786140-qi85a2ic1vm67op501lhkq48k78aqosh.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "733203412675-joc0m6f7ad7l4f4uj3s01sjug9vij77a.apps.googleusercontent.com",
@@ -34,6 +51,8 @@
       },
       "env": {
         "MAX_APP_SIZE_MB": "30",
+        "EXPO_PUBLIC_API_URL": "https://cobilds.cloud.run/api",
+        "EXPO_PUBLIC_WEB_ORIGIN": "https://www.cobilds.com",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "823573786140-qi85a2ic1vm67op501lhkq48k78aqosh.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "733203412675-joc0m6f7ad7l4f4uj3s01sjug9vij77a.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME": "com.googleusercontent.apps.733203412675-joc0m6f7ad7l4f4uj3s01sjug9vij77a"

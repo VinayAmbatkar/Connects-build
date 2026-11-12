@@ -1,6 +1,9 @@
+import { alertApiError } from '@/src/features/billing/featureLocked';
+import { useFreemiumStore } from '@/src/features/billing/freemiumStore';
+import type { FreemiumOffer } from '@/src/api/freemium';
 import { useMemo, useRef, useState } from 'react';
 import {
-  Alert,
+  ActivityIndicator,
   Image,
   Linking,
   Pressable,
@@ -15,7 +18,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Avatar } from '@/src/components/Avatar';
-import { ErrorState, LoadingState } from '@/src/components/EmptyState';
+import { BottomSheet } from '@/src/components/BottomSheet';
+import { favouritesApi, suggestionsApi } from '@/src/api/social';
+import { ErrorState } from '@/src/components/EmptyState';
 import { getErrorMessage } from '@/src/api/client';
 import { blocksApi } from '@/src/api/blocks';
 import { connectionsApi } from '@/src/api/connections';
@@ -27,20 +32,26 @@ import {
   ProfileContentTabs,
   type ProfileContentTab,
 } from '@/src/features/profile/ProfileContentTabs';
+import { ProfileCertificationsSection } from '@/src/features/profile/ProfileCertificationsSection';
 import { ProfileSectionCard } from '@/src/features/profile/ProfileSectionCard';
 import { RoleExpertiseSection } from '@/src/features/profile/RoleExpertiseSection';
 import { TopSkillsCard } from '@/src/features/profile/TopSkillsCard';
 import { formatAboutPreview } from '@/src/features/profile/profileFormat';
 import {
   normalizeOptions,
-  normalizeProfileIds,
   resolveOptionLabel,
 } from '@/src/features/profile/profileOptions';
 import { getTopSkillLabels } from '@/src/features/profile/profileSkills';
 import { useAuthStore } from '@/src/store/authStore';
-import type { Connection, ProfessionalProfile, Project } from '@/src/types/api';
+import type { Connection, Project } from '@/src/types/api';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
+import { appAlert } from '@/src/components/AppDialog';
+import { usePlaceLabel, usePlaceLabels } from '@/src/hooks/usePlaceLabels';
+import { ProjectDetailSheet, projectPhotos } from '@/src/features/profile/ProjectDetailSheet';
+import { useFeature } from '@/src/features/billing/useFeature';
+import { PremiumBadge } from '@/src/components/PremiumBadge';
+import { ProfileSkeleton } from '@/src/components/Skeleton';
 const LINKEDIN_BLUE = '#0A66C2';
 const PROFILE_BG = '#F3F2EF';
 
@@ -57,36 +68,48 @@ function unwrapProjects(data: unknown): Project[] {
   return [];
 }
 
-function buildLocation(profile?: ProfessionalProfile | null) {
-  const ids = normalizeProfileIds((profile as Record<string, unknown>) ?? {});
-  void ids;
-  return profile?.serviceLocations?.filter(Boolean).join(', ');
-}
 
-function projectImage(project: Project) {
-  const photos = (project as { photoUrls?: string[]; photos?: string[] }).photoUrls
-    ?? project.photos;
-  return Array.isArray(photos) && photos[0] ? String(photos[0]) : undefined;
-}
-
-function connectionStatusOf(item: Connection) {
-  return String(item.status ?? '').toUpperCase();
-}
-
-function isIncomingPending(
-  item: Connection,
-  myId?: string | number | null,
-) {
-  const status = connectionStatusOf(item);
-  if (status !== 'PENDING' && status !== 'REQUESTED') return false;
-  if (String(item.direction ?? '').toLowerCase() === 'incoming') return true;
-  if (String(item.direction ?? '').toLowerCase() === 'outgoing') return false;
-  if (myId == null) return true;
-  return String(item.recipientId ?? '') === String(myId);
+/** One project in the Projects tab; tapping it opens ProjectDetailSheet. */
+function ProjectRow({ project, onPress }: { project: Project; onPress: () => void }) {
+  const title = String(project.name ?? project.title ?? 'Project');
+  const imageUrl = projectPhotos(project)[0];
+  const location = usePlaceLabel(project.locationId);
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.projectRow, pressed && { opacity: 0.7 }]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Open project ${title}`}
+    >
+      {imageUrl ? (
+        <Image source={{ uri: imageUrl }} style={styles.projectThumb} />
+      ) : (
+        <View style={[styles.projectThumb, styles.projectThumbEmpty]}>
+          <Ionicons name="image-outline" size={22} color={colors.textMuted} />
+        </View>
+      )}
+      <View style={styles.experienceCopy}>
+        <Text style={styles.itemTitle} numberOfLines={2}>
+          {title}
+        </Text>
+        {location ? <Text style={styles.itemSub}>{location}</Text> : null}
+        {project.description ? (
+          <Text style={styles.itemSub} numberOfLines={2}>
+            {String(project.description)}
+          </Text>
+        ) : null}
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+    </Pressable>
+  );
 }
 
 export function PublicProfileScreen({ userId }: Props) {
   const queryClient = useQueryClient();
+  const [openProject, setOpenProject] = useState<Project | null>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const connectAccess = useFeature('connect');
+  const messageAccess = useFeature('message');
   const me = useAuthStore((s) => s.user);
   const myId =
     me?.id ?? (me as { userId?: string | number } | null)?.userId ?? null;
@@ -117,45 +140,36 @@ export function PublicProfileScreen({ userId }: Props) {
     enabled: Boolean(userId),
   });
 
-  const connectionsQuery = useQuery({
-    queryKey: ['connections'],
-    queryFn: () => connectionsApi.list(),
-  });
-
   const isOwnProfile =
     String(me?.id ?? '') === String(userId) ||
     String((me as { userId?: string | number } | null)?.userId ?? '') ===
       String(userId);
 
-  const matchedConnection = useMemo(() => {
-    const list = Array.isArray(connectionsQuery.data) ? connectionsQuery.data : [];
-    return (
-      list.find((c) => {
-        const ids = [
-          c.otherPartyId,
-          c.userId,
-          c.recipientId,
-          c.requesterId,
-        ].map((id) => String(id ?? ''));
-        return ids.includes(String(userId));
-      }) ?? null
-    );
-  }, [connectionsQuery.data, userId]);
-
-  const connectionStatus = connectionStatusOf(
-    matchedConnection ?? ({} as Connection),
-  );
-  const isIncomingRequest = matchedConnection
-    ? isIncomingPending(matchedConnection, myId)
-    : false;
+  // What I am to this person comes with the profile itself
+  // (connectionStatus + connectionId on GET /profile/professional/:id).
+  // This used to fetch my connections list and search it -- one more
+  // request per profile view, and that list only held the first 20, so
+  // anyone with more saw "Connect" on people they were connected to.
+  const relationship = profileQuery.data as
+    | { connectionStatus?: string; connectionId?: number }
+    | undefined;
+  const relation = String(relationship?.connectionStatus ?? 'NONE').toUpperCase();
+  const connectionStatus =
+    relation === 'CONNECTED' ? 'ACCEPTED' : relation.startsWith('PENDING') ? 'PENDING' : relation;
+  const isIncomingRequest = relation === 'PENDING_RECEIVED';
+  const matchedConnection = relationship?.connectionId ? { id: relationship.connectionId } : null;
+  const refreshRelationship = () => {
+    void queryClient.invalidateQueries({ queryKey: ['connections'] });
+    void queryClient.invalidateQueries({ queryKey: ['public-profile', userId] });
+  };
 
   const connectMutation = useMutation({
     mutationFn: () => connectionsApi.send(userId),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['connections'] });
-      Alert.alert('Request sent', 'Connection request sent.');
+      refreshRelationship();
+      appAlert('Request sent', 'Connection request sent.');
     },
-    onError: (error) => Alert.alert('Error', getErrorMessage(error)),
+    onError: (error) => alertApiError(error),
   });
 
   const acceptMutation = useMutation({
@@ -166,10 +180,10 @@ export function PublicProfileScreen({ userId }: Props) {
       return connectionsApi.accept(matchedConnection.id);
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['connections'] });
-      Alert.alert('Connected', 'Connection request accepted.');
+      refreshRelationship();
+      appAlert('Connected', 'Connection request accepted.');
     },
-    onError: (error) => Alert.alert('Error', getErrorMessage(error)),
+    onError: (error) => alertApiError(error),
   });
 
   const messageMutation = useMutation({
@@ -179,16 +193,59 @@ export function PublicProfileScreen({ userId }: Props) {
         (conversation as { id?: string | number })?.id ?? userId;
       router.push(`/chat/${conversationId}`);
     },
-    onError: (error) => Alert.alert('Error', getErrorMessage(error)),
+    onError: (error) => alertApiError(error),
   });
+
+  // Saved profiles (web: Favourites). Shares the list cache with the
+  // Saved profiles screen.
+  const favouritesQuery = useQuery({ queryKey: ['favourites'], queryFn: favouritesApi.list });
+  const isSaved = (favouritesQuery.data ?? []).some((f) => String(f.favouriteUserId) === String(userId));
+  const saveMutation = useMutation({
+    mutationFn: () => (isSaved ? favouritesApi.remove(String(userId)) : favouritesApi.add(String(userId))),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['favourites'] }),
+    onError: (error) => alertApiError(error),
+  });
+
+  const [mutualOpen, setMutualOpen] = useState(false);
+  const mutualQuery = useQuery({
+    queryKey: ['mutual-connections', String(userId)],
+    queryFn: () => suggestionsApi.mutual(String(userId)),
+    enabled: mutualOpen,
+  });
+
+  const displayName = (profileQuery.data?.fullName ?? 'this member').trim() || 'this member';
 
   const blockMutation = useMutation({
     mutationFn: () => blocksApi.block(userId),
-    onSuccess: () => Alert.alert('Blocked', 'User has been blocked.'),
-    onError: (error) => Alert.alert('Error', getErrorMessage(error)),
+    onSuccess: () => {
+      // The Blocked users list, and anything showing this person.
+      void queryClient.invalidateQueries({ queryKey: ['blocks'] });
+      void queryClient.invalidateQueries({ queryKey: ['connections'] });
+      void queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      appAlert('Blocked', `${displayName} has been blocked. You can unblock them from Settings › Blocked users.`, [
+        { text: 'OK', onPress: () => (router.canGoBack() ? router.back() : router.replace('/(tabs)/feed')) },
+      ]);
+    },
+    onError: (error) => alertApiError(error),
   });
 
-  if (profileQuery.isLoading) return <LoadingState />;
+  const confirmBlock = () => {
+    setMoreOpen(false);
+    appAlert(`Block ${displayName}?`, "They won't be able to message you, connect with you or see your posts. They aren't told you blocked them.", [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Block', style: 'destructive', onPress: () => blockMutation.mutate() },
+    ]);
+  };
+
+  // Firm first, then service locations -- stored as Google place IDs,
+  // location codes or typed text; usePlaceLabels makes them all readable
+  // (this used to print the raw place ID).
+  const locationLabels = usePlaceLabels([
+    ...((profileQuery.data?.firmLocationIds ?? []) as string[]),
+    ...((profileQuery.data?.serviceLocations ?? []) as string[]),
+  ]);
+
+  if (profileQuery.isLoading) return <ProfileSkeleton />;
 
   if (profileQuery.isError) {
     return (
@@ -208,12 +265,15 @@ export function PublicProfileScreen({ userId }: Props) {
   const role =
     resolveOptionLabel(roleOptions, profile?.role) ?? profile?.role ?? '';
   const company = profile?.company?.trim();
-  const location = buildLocation(profile);
+  const location = locationLabels.slice(0, 2).join(', ');
   const metaLine = [company, location].filter(Boolean).join(' · ');
   const bio = profile?.bio?.trim();
   const aboutPreview = bio ? formatAboutPreview(bio, 220) : null;
   const topSkills = getTopSkillLabels(profile, optionsQuery.data);
   const projects = unwrapProjects(projectsQuery.data);
+  // Plan-locked full profile ("Claim it free" during the freemium campaign).
+  const lockedOffer: FreemiumOffer | null =
+    !isOwnProfile && profile?.lockedFeature && profile.offer?.title ? profile.offer : null;
   const rawProjects = Array.isArray(
     (profile as { projects?: unknown } | undefined)?.projects,
   )
@@ -224,6 +284,7 @@ export function PublicProfileScreen({ userId }: Props) {
     typeof (profile as { connectionCount?: number })?.connectionCount === 'number'
       ? (profile as { connectionCount: number }).connectionCount
       : undefined;
+  const mutualCount = Number((profile as { mutualConnectionCount?: number } | undefined)?.mutualConnectionCount ?? 0);
   const years = profile?.yearsExperience;
   const website = profile?.website?.trim();
   const email = profile?.email?.trim();
@@ -246,29 +307,22 @@ export function PublicProfileScreen({ userId }: Props) {
         <Text style={styles.topTitle} numberOfLines={1}>
           {profile?.fullName ?? 'Profile'}
         </Text>
+        {!isOwnProfile ? (
+          <Pressable
+            onPress={() => saveMutation.mutate()}
+            disabled={saveMutation.isPending || favouritesQuery.isLoading}
+            hitSlop={10}
+            style={styles.topBtn}
+            accessibilityRole="button"
+            accessibilityLabel={isSaved ? 'Remove from saved profiles' : 'Save profile'}
+          >
+            <Ionicons name={isSaved ? 'bookmark' : 'bookmark-outline'} size={20} color={isSaved ? colors.primary : colors.text} />
+          </Pressable>
+        ) : null}
         <Pressable
-          onPress={() =>
-            Alert.alert('More', undefined, [
-              {
-                text: 'Block',
-                style: 'destructive',
-                onPress: () =>
-                  Alert.alert(
-                    'Block user',
-                    'They will no longer be able to contact you.',
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      {
-                        text: 'Block',
-                        style: 'destructive',
-                        onPress: () => blockMutation.mutate(),
-                      },
-                    ],
-                  ),
-              },
-              { text: 'Cancel', style: 'cancel' },
-            ])
-          }
+          onPress={() => setMoreOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel="More options"
           hitSlop={10}
           style={styles.topBtn}
         >
@@ -312,6 +366,13 @@ export function PublicProfileScreen({ userId }: Props) {
                 : `${connectionCount} connections`}
             </Text>
           ) : null}
+          {!isOwnProfile && mutualCount > 0 ? (
+            <Pressable onPress={() => setMutualOpen(true)} hitSlop={6} accessibilityRole="button">
+              <Text style={styles.mutualLink}>
+                {mutualCount} mutual connection{mutualCount === 1 ? '' : 's'}
+              </Text>
+            </Pressable>
+          ) : null}
 
           {!isOwnProfile ? (
             <View style={styles.actionRow}>
@@ -322,6 +383,7 @@ export function PublicProfileScreen({ userId }: Props) {
                   disabled={messageMutation.isPending}
                 >
                   <Ionicons name="chatbubble-ellipses" size={16} color={colors.white} />
+                  {messageAccess.lockedTier ? <PremiumBadge tier={messageAccess.lockedTier} size={9} /> : null}
                   <Text style={styles.primaryBtnText}>
                     {messageMutation.isPending ? 'Opening…' : 'Message'}
                   </Text>
@@ -357,6 +419,9 @@ export function PublicProfileScreen({ userId }: Props) {
                     size={16}
                     color={colors.white}
                   />
+                  {connectAccess.lockedTier && !isPending && !canAccept ? (
+                    <PremiumBadge tier={connectAccess.lockedTier} size={9} />
+                  ) : null}
                   <Text style={styles.primaryBtnText}>
                     {acceptMutation.isPending
                       ? 'Accepting…'
@@ -372,10 +437,30 @@ export function PublicProfileScreen({ userId }: Props) {
               )}
 
               {!isConnected ? (
+                // Messaging needs an accepted connection (the backend refuses
+                // otherwise). This used to try anyway and end in an error;
+                // now it explains, and offers the next step.
                 <Pressable
                   style={[styles.outlineBtn, styles.flexBtn]}
-                  onPress={() => messageMutation.mutate()}
-                  disabled={messageMutation.isPending}
+                  onPress={() =>
+                    appAlert(
+                      'Connect to message',
+                      isPending
+                        ? `You can message ${displayName} once they accept your connection request.`
+                        : canAccept
+                          ? `Accept ${displayName}'s connection request to start messaging.`
+                          : `You can message ${displayName} after they accept your connection request.`,
+                      isPending
+                        ? [{ text: 'OK' }]
+                        : [
+                            { text: 'Not now', style: 'cancel' },
+                            {
+                              text: canAccept ? 'Accept' : 'Connect',
+                              onPress: () => (canAccept ? acceptMutation.mutate() : connectMutation.mutate()),
+                            },
+                          ],
+                    )
+                  }
                 >
                   <Ionicons name="chatbubble-outline" size={16} color={LINKEDIN_BLUE} />
                   <Text style={styles.outlineBtnText}>Message</Text>
@@ -391,6 +476,8 @@ export function PublicProfileScreen({ userId }: Props) {
             </Pressable>
           )}
         </View>
+
+        {lockedOffer ? <LockedContactCard offer={lockedOffer} /> : null}
 
         <ProfileContentTabs active={contentTab} onChange={changeTab} />
 
@@ -435,6 +522,8 @@ export function PublicProfileScreen({ userId }: Props) {
                 </View>
               </ProfileSectionCard>
             ) : null}
+
+            <ProfileCertificationsSection profile={profile} />
 
             {(email || website || linkedIn) ? (
               <ProfileSectionCard title="Contact">
@@ -483,44 +572,14 @@ export function PublicProfileScreen({ userId }: Props) {
         {contentTab === 'projects' ? (
           displayProjects.length ? (
             <ProfileSectionCard title="Projects">
-              {displayProjects.slice(0, 8).map((project, index) => {
-                const title = project.name ?? project.title ?? 'Project';
-                const imageUrl = projectImage(project);
-                const loc = project.locationId
-                  ? String(project.locationId)
-                  : undefined;
-                return (
-                  <View key={String(project.id ?? index)}>
-                    <View style={styles.projectRow}>
-                      {imageUrl ? (
-                        <Image source={{ uri: imageUrl }} style={styles.projectThumb} />
-                      ) : (
-                        <View style={[styles.projectThumb, styles.projectThumbEmpty]}>
-                          <Ionicons
-                            name="image-outline"
-                            size={22}
-                            color={colors.textMuted}
-                          />
-                        </View>
-                      )}
-                      <View style={styles.experienceCopy}>
-                        <Text style={styles.itemTitle} numberOfLines={2}>
-                          {title}
-                        </Text>
-                        {loc ? <Text style={styles.itemSub}>{loc}</Text> : null}
-                        {project.description ? (
-                          <Text style={styles.itemSub} numberOfLines={2}>
-                            {String(project.description)}
-                          </Text>
-                        ) : null}
-                      </View>
-                    </View>
-                    {index < Math.min(displayProjects.length, 8) - 1 ? (
-                      <View style={styles.divider} />
-                    ) : null}
-                  </View>
-                );
-              })}
+              {displayProjects.slice(0, 8).map((project, index) => (
+                <View key={String(project.id ?? index)}>
+                  <ProjectRow project={project} onPress={() => setOpenProject(project)} />
+                  {index < Math.min(displayProjects.length, 8) - 1 ? (
+                    <View style={styles.divider} />
+                  ) : null}
+                </View>
+              ))}
             </ProfileSectionCard>
           ) : (
             <ProfileSectionCard title="Projects">
@@ -544,11 +603,137 @@ export function PublicProfileScreen({ userId }: Props) {
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
+      <BottomSheet
+        visible={mutualOpen}
+        title="Mutual connections"
+        subtitle={profile?.fullName ? `People you and ${profile.fullName} both know` : undefined}
+        onClose={() => setMutualOpen(false)}
+      >
+        {mutualQuery.isLoading ? <ProfileSkeleton /> : null}
+        {(mutualQuery.data?.connections ?? []).map((m) => (
+          <Pressable
+            key={m.userId}
+            style={styles.mutualRow}
+            onPress={() => {
+              setMutualOpen(false);
+              router.push(`/public-profile/${m.userId}`);
+            }}
+          >
+            <Avatar name={m.name} size={40} />
+            <View style={styles.mutualCopy}>
+              <Text style={styles.itemTitle}>{m.name}</Text>
+              {m.role ? <Text style={styles.itemSub}>{m.role}</Text> : null}
+            </View>
+          </Pressable>
+        ))}
+      </BottomSheet>
+
+      <ProjectDetailSheet project={openProject} onClose={() => setOpenProject(null)} />
+
+      <BottomSheet visible={moreOpen} title={displayName} onClose={() => setMoreOpen(false)}>
+        <Pressable style={styles.sheetRow} onPress={confirmBlock} accessibilityRole="button">
+          <Ionicons name="ban-outline" size={20} color={colors.danger} />
+          <Text style={[styles.sheetRowText, { color: colors.danger }]}>Block {displayName}</Text>
+        </Pressable>
+      </BottomSheet>
     </SafeAreaView>
   );
 }
 
+/** The viewer's plan doesn't include contact details: the backend leaves
+ *  them out, and this card offers the unlock. A claim refreshes every
+ *  query (see freemiumStore), which reloads the profile with them. */
+function LockedContactCard({ offer }: { offer: FreemiumOffer }) {
+  const claim = useFreemiumStore((s) => s.claim);
+  const claiming = useFreemiumStore((s) => s.claiming);
+  const showCta = !!offer.cta_label && (offer.cta_action === 'CLAIM' || offer.cta_action === 'OPEN_PLANS');
+  const onPress = () => {
+    if (offer.cta_action === 'CLAIM') void claim(offer.feature);
+    else router.push('/premium');
+  };
+  return (
+    <View style={styles.lockedCard}>
+      <View style={styles.lockedIcon}>
+        <Ionicons name="lock-closed-outline" size={20} color={colors.primaryDark} />
+      </View>
+      <View style={styles.lockedCopy}>
+        <View style={styles.lockedTitleRow}>
+          <Text style={styles.lockedTitle}>Contact details</Text>
+          <PremiumBadge tier="verified" label size={9} />
+        </View>
+        <Text style={styles.lockedMessage} numberOfLines={2}>Email, phone and website are hidden on your plan.</Text>
+      </View>
+      {showCta ? (
+        <Pressable
+          accessibilityRole="button"
+          disabled={claiming}
+          onPress={onPress}
+          style={({ pressed }) => [styles.lockedBtn, (pressed || claiming) && { opacity: 0.7 }]}
+        >
+          {claiming ? <ActivityIndicator color={colors.white} /> : <Text style={styles.lockedBtnText}>{offer.cta_label}</Text>}
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  lockedCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.primaryMuted,
+  },
+  lockedIcon: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.full,
+    backgroundColor: colors.primaryMuted,
+  },
+  lockedCopy: { flex: 1 },
+  lockedTitle: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: typography.size.sm,
+    color: colors.text,
+  },
+  sheetRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14 },
+  sheetRowText: { fontFamily: typography.fontFamily.semibold, fontSize: 15, color: colors.text },
+  lockedTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  lockedMessage: {
+    marginTop: 2,
+    fontFamily: typography.fontFamily.regular,
+    fontSize: typography.size.xs,
+    color: colors.textSecondary,
+  },
+  lockedBtn: {
+    minHeight: 38,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.full,
+    backgroundColor: colors.primary,
+  },
+  lockedBtnText: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: typography.size.xs + 1,
+    color: colors.white,
+  },
+  mutualLink: {
+    marginTop: 4,
+    fontFamily: typography.fontFamily.semibold,
+    fontSize: typography.size.sm,
+    color: LINKEDIN_BLUE,
+  },
+  mutualRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm },
+  mutualCopy: { flex: 1 },
   safe: { flex: 1, backgroundColor: PROFILE_BG },
   topBar: {
     flexDirection: 'row',

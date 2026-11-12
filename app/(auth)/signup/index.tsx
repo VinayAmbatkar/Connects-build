@@ -1,6 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   Dimensions,
   Image,
   KeyboardAvoidingView,
@@ -17,10 +16,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PhoneCountryPicker } from '@/src/components/PhoneCountryPicker';
-import { SignupAccountFooter } from '@/src/components/SignupAccountFooter';
 import { StepProgress } from '@/src/components/StepProgress';
 import { TextField } from '@/src/components/TextField';
 import { BrandHeader } from '@/src/features/onboarding/BrandHeader';
+import { BrandTaglineFooter } from '@/src/components/BrandTaglineFooter';
 import {
   digitsOnly,
   getPhoneCountryById,
@@ -30,6 +29,7 @@ import {
 import { useSignupStore } from '@/src/store/signupStore';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
+import { appAlert } from '@/src/components/AppDialog';
 const signupHero = require('../../../assets/images/Onboarding/loginimg-bg.webp');
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BRAND = '#F57D01';
@@ -68,11 +68,11 @@ export default function SignupProfileScreen() {
 
   const onContinue = () => {
     if (!draft.fullName.trim() || !draft.email.trim()) {
-      Alert.alert('Missing info', 'Please fill full name and email.');
+      appAlert('Missing info', 'Please fill full name and email.');
       return;
     }
     if (!isValidNationalNumber(digitsOnly(draft.phoneNumber), country)) {
-      Alert.alert(
+      appAlert(
         'Invalid phone number',
         `Enter a valid ${country.name} mobile number (${country.maxLength} digits).`,
       );
@@ -92,7 +92,7 @@ export default function SignupProfileScreen() {
           ref={scrollRef}
           contentContainerStyle={[
             styles.content,
-            { paddingBottom: Math.max(insets.bottom, 16) },
+            { paddingBottom: Math.max(insets.bottom, 8) },
           ]}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
@@ -141,6 +141,8 @@ export default function SignupProfileScreen() {
               onChangeText={(fullName) => update({ fullName })}
               placeholder="Enter your full name"
               leftAddon={<Ionicons name="person-outline" size={20} color={BRAND} />}
+              labelSuffix=" (As per Aadhar Card)"
+              inputRowStyle={styles.inputRow}
             />
 
             <TextField
@@ -154,6 +156,7 @@ export default function SignupProfileScreen() {
               placeholder="you@example.com"
               leftAddon={<Ionicons name="mail-outline" size={20} color={BRAND} />}
               onFocus={ensureVisible}
+              inputRowStyle={styles.inputRow}
             />
 
             <Text style={styles.label}>
@@ -198,7 +201,9 @@ export default function SignupProfileScreen() {
               </View>
             </Pressable>
 
-            <SignupAccountFooter />
+            <View style={styles.bottomGroup}>
+              <BrandTaglineFooter />
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -220,57 +225,60 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   hero: {
-    minHeight: 72,
+    minHeight: 56,
     paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xs,
+    paddingTop: 0,
     overflow: 'hidden',
     backgroundColor: colors.background,
   },
   heroArt: {
     ...StyleSheet.absoluteFill,
-    opacity: 0.55,
+    opacity: 0.45,
   },
   heroImage: {
     position: 'absolute',
-    right: -48,
-    top: -36,
-    width: SCREEN_WIDTH * 0.52,
-    height: 112,
+    right: -32,
+    top: -20,
+    width: SCREEN_WIDTH * 0.45,
+    height: 88,
   },
   heroFadeBottom: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    height: 36,
+    height: 28,
   },
   heroContent: {
     zIndex: 2,
-    maxWidth: '78%',
-    paddingBottom: spacing.xs,
+    maxWidth: '80%',
+    paddingBottom: 4,
   },
   pageTitle: {
-    marginTop: spacing.sm,
+    marginTop: 4,
     fontFamily: typography.fontFamily.bold,
-    fontSize: 26,
-    lineHeight: 32,
+    fontSize: 22,
+    lineHeight: 28,
     color: colors.text,
     letterSpacing: -0.4,
   },
   pageSub: {
-    marginTop: 4,
+    marginTop: 2,
     fontFamily: typography.fontFamily.regular,
-    fontSize: 13,
+    fontSize: 12,
     color: colors.textSecondary,
   },
   body: {
     paddingHorizontal: spacing.lg,
-    marginTop: spacing.sm,
+    marginTop: 4,
+  },
+  bottomGroup: {
+    marginTop: spacing.lg,
   },
   sectionHead: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: spacing.md,
+    gap: 10,
+    marginBottom: spacing.sm,
   },
   sectionIcon: {
     width: 36,
@@ -294,8 +302,8 @@ const styles = StyleSheet.create({
   },
   desc: {
     fontFamily: typography.fontFamily.regular,
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 13,
+    lineHeight: 18,
     color: colors.textSecondary,
   },
   label: {
@@ -307,8 +315,11 @@ const styles = StyleSheet.create({
   required: {
     color: colors.danger,
   },
+  inputRow: {
+    minHeight: 56,
+  },
   phoneBox: {
-    minHeight: 52,
+    minHeight: 56,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
@@ -355,9 +366,9 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   nextBtn: {
-    marginTop: spacing.md,
-    minHeight: 54,
-    borderRadius: radius.md,
+    marginTop: spacing.sm,
+    minHeight: 56,
+    borderRadius: radius.full,
     backgroundColor: BRAND,
     alignItems: 'center',
     justifyContent: 'center',

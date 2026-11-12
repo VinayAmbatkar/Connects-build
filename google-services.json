@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "64038576525",
+    "project_id": "cobilds-prod",
+    "storage_bucket": "cobilds-prod.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:64038576525:android:b25e3f094c8321039addc4",
+        "android_client_info": {
+          "package_name": "com.cobilds.com"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCdtk_60CXgZVaTh0dARDRw9H0k9-2yKho"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

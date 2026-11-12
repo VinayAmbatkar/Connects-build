@@ -32,6 +32,8 @@ const NAV_ITEMS: Array<{
   { label: 'Connection', icon: 'people-outline', href: '/(tabs)/network' },
   { label: 'Messages', icon: 'chatbubble-ellipses-outline', href: '/(tabs)/messages' },
   { label: 'My Profile', icon: 'person-outline', href: '/(tabs)/profile' },
+  { label: 'Saved profiles', icon: 'bookmark-outline', href: '/favourites' as Href },
+  { label: 'Plans & billing', icon: 'card-outline', href: '/premium' as Href },
 ];
 
 const DRAWER_WIDTH = Math.min(300, Dimensions.get('window').width * 0.82);

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
   Pressable,
   StyleSheet,
   Text,
@@ -218,15 +217,21 @@ export function LocationAutocomplete({
           <Text style={styles.errorText}>{error}</Text>
         </View>
       ) : (
-        <FlatList
-          data={items}
-          keyExtractor={(item) => item.id}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => {
-            const isGoogle = item.source === 'google';
-            return (
+        // A plain list, not a FlatList: BottomSheet already scrolls its
+        // content, and a FlatList inside it raised "VirtualizedLists should
+        // never be nested inside plain ScrollViews". At most a few dozen
+        // rows, so virtualising bought nothing.
+        <View style={styles.listContent}>
+          {items.length === 0 ? (
+            <View style={styles.emptyWrap}>
+              <Text style={styles.emptyText}>
+                {query.trim().length > 0
+                  ? 'No locations found. Try another name.'
+                  : 'Start typing to search locations.'}
+              </Text>
+            </View>
+          ) : (
+            items.map((item) => (
               <Pressable
                 key={item.id}
                 style={styles.optionRow}
@@ -235,22 +240,13 @@ export function LocationAutocomplete({
                 <Text style={styles.optionText} numberOfLines={1}>
                   {item.label}
                 </Text>
-                {isGoogle ? (
+                {item.source === 'google' ? (
                   <Ionicons name="map" size={16} color={colors.textMuted} />
                 ) : null}
               </Pressable>
-            );
-          }}
-          ListEmptyComponent={
-            <View style={styles.emptyWrap}>
-              <Text style={styles.emptyText}>
-                {query.trim().length > 0
-                  ? 'No locations found. Try another name.'
-                  : 'Start typing to search locations.'}
-              </Text>
-            </View>
-          }
-        />
+            ))
+          )}
+        </View>
       )}
     </BottomSheet>
   );

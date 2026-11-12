@@ -1,5 +1,6 @@
+import { alertApiError } from '@/src/features/billing/featureLocked';
 import { useMemo, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useMutation } from '@tanstack/react-query';
 import { Button } from '@/src/components/Button';
 import { TextField } from '@/src/components/TextField';
@@ -7,6 +8,7 @@ import { authApi } from '@/src/api/auth';
 import { getErrorMessage } from '@/src/api/client';
 import { colors, spacing, typography } from '@/src/theme/tokens';
 
+import { appAlert } from '@/src/components/AppDialog';
 function passwordErrors(value: string) {
   return {
     tooShort: value.length < 8,
@@ -32,29 +34,29 @@ export function SettingsPasswordScreen() {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      Alert.alert('Password updated', 'Your password was changed successfully.');
+      appAlert('Password updated', 'Your password was changed successfully.');
     },
-    onError: (error) => Alert.alert('Error', getErrorMessage(error)),
+    onError: (error) => alertApiError(error),
   });
 
   const submit = () => {
     if (!currentPassword || !newPassword || !confirmPassword) {
-      Alert.alert('Missing fields', 'Fill in all password fields.');
+      appAlert('Missing fields', 'Fill in all password fields.');
       return;
     }
     if (unmet) {
-      Alert.alert(
+      appAlert(
         'Weak password',
         'Use 8–12 characters with upper, lower, number, and special character.',
       );
       return;
     }
     if (newPassword !== confirmPassword) {
-      Alert.alert('Mismatch', 'New password and confirmation do not match.');
+      appAlert('Mismatch', 'New password and confirmation do not match.');
       return;
     }
     if (newPassword === currentPassword) {
-      Alert.alert('Same password', 'Choose a password different from your current one.');
+      appAlert('Same password', 'Choose a password different from your current one.');
       return;
     }
     mutation.mutate();

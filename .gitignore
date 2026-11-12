@@ -28,3 +28,5 @@ artifacts/
 
 expo-env.d.ts
 # @end expo-cli
+# Firebase service-account keys (secret; uploaded to EAS, never commit)
+*-firebase-adminsdk-*.json

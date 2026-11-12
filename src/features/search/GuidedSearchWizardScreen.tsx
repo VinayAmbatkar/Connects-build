@@ -21,24 +21,27 @@ import {
 import { useSearchFlowStore } from '@/src/features/search/searchFlowStore';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
+/** Multi-select chips: tap to add, tap again to remove. */
 function ChipGrid({
   options,
-  selectedId,
-  onSelect,
+  selected,
+  onToggle,
 }: {
   options: CategoryOption[];
-  selectedId: string;
-  onSelect: (id: string) => void;
+  selected: string[];
+  onToggle: (id: string) => void;
 }) {
   return (
     <View style={styles.chipGrid}>
       {options.map((opt) => {
-        const active = opt.id === selectedId;
+        const active = selected.includes(opt.id);
         return (
           <Pressable
             key={opt.id}
-            onPress={() => onSelect(opt.id)}
+            onPress={() => onToggle(opt.id)}
             style={[styles.chip, active && styles.chipActive]}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: active }}
           >
             <Text
               style={[styles.chipText, active && styles.chipTextActive]}
@@ -60,10 +63,12 @@ function SectionLabel({
   icon,
   label,
   required,
+  hint,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   required?: boolean;
+  hint?: string;
 }) {
   return (
     <View style={styles.sectionLabel}>
@@ -72,6 +77,7 @@ function SectionLabel({
         {label}
         {required ? ' *' : ''}
       </Text>
+      {hint ? <Text style={styles.sectionHint}>{hint}</Text> : null}
     </View>
   );
 }
@@ -79,22 +85,28 @@ function SectionLabel({
 export function GuidedSearchWizardScreen() {
   const role = useSearchFlowStore((s) => s.role);
   const location = useSearchFlowStore((s) => s.location);
-  const projectType = useSearchFlowStore((s) => s.projectType);
-  const discipline = useSearchFlowStore((s) => s.discipline);
-  const specialization = useSearchFlowStore((s) => s.specialization);
+  const projectTypes = useSearchFlowStore((s) => s.projectTypes);
+  const selectedDisciplines = useSearchFlowStore((s) => s.disciplines);
+  const selectedSpecializations = useSearchFlowStore((s) => s.specializations);
   const setLocation = useSearchFlowStore((s) => s.setLocation);
-  const setProjectType = useSearchFlowStore((s) => s.setProjectType);
-  const setDiscipline = useSearchFlowStore((s) => s.setDiscipline);
-  const setSpecialization = useSearchFlowStore((s) => s.setSpecialization);
+  const toggleProjectType = useSearchFlowStore((s) => s.toggleProjectType);
+  const toggleDiscipline = useSearchFlowStore((s) => s.toggleDiscipline);
+  const toggleSpecialization = useSearchFlowStore((s) => s.toggleSpecialization);
 
   const [locOpen, setLocOpen] = useState(false);
   const [locValue, setLocValue] = useState(location || '');
 
   const roleLabel = getCategoryRoleLabel(role) || 'Connections';
   const disciplines = useMemo(() => getDisciplinesForRole(role), [role]);
-  const specializations = useMemo(
-    () => getSpecializationsForDiscipline(discipline),
-    [discipline],
+  // One category group per selected type that has categories, in the
+  // order the types are listed.
+  const categoryGroups = useMemo(
+    () =>
+      disciplines
+        .filter((d) => selectedDisciplines.includes(d.id))
+        .map((d) => ({ discipline: d, options: getSpecializationsForDiscipline(d.id) }))
+        .filter((g) => g.options.length > 0),
+    [disciplines, selectedDisciplines],
   );
 
   useEffect(() => {
@@ -164,33 +176,21 @@ export function GuidedSearchWizardScreen() {
           <Ionicons name="chevron-down" size={18} color={colors.textMuted} />
         </Pressable>
 
-        <SectionLabel icon="business-outline" label="Select Your Project Type" />
-        <ChipGrid
-          options={PROJECT_TYPE_OPTIONS}
-          selectedId={projectType}
-          onSelect={setProjectType}
-        />
+        <SectionLabel icon="business-outline" label="Select Your Project Type" hint="Select one or more" />
+        <ChipGrid options={PROJECT_TYPE_OPTIONS} selected={projectTypes} onToggle={toggleProjectType} />
 
-        <SectionLabel
-          icon="construct-outline"
-          label={`Select Type of ${roleLabel}`}
-        />
-        <ChipGrid
-          options={disciplines}
-          selectedId={discipline}
-          onSelect={(id) => {
-            setDiscipline(id);
-          }}
-        />
+        <SectionLabel icon="construct-outline" label={`Select Type of ${roleLabel}`} hint="Select one or more" />
+        <ChipGrid options={disciplines} selected={selectedDisciplines} onToggle={toggleDiscipline} />
 
-        {specializations.length > 0 ? (
+        {categoryGroups.length > 0 ? (
           <>
-            <SectionLabel icon="layers-outline" label="Select Category" />
-            <ChipGrid
-              options={specializations}
-              selectedId={specialization}
-              onSelect={setSpecialization}
-            />
+            <SectionLabel icon="layers-outline" label="Select Category" hint="Optional · one or more" />
+            {categoryGroups.map((g) => (
+              <View key={g.discipline.id} style={styles.group}>
+                {categoryGroups.length > 1 ? <Text style={styles.groupTitle}>{g.discipline.label}</Text> : null}
+                <ChipGrid options={g.options} selected={selectedSpecializations} onToggle={toggleSpecialization} />
+              </View>
+            ))}
           </>
         ) : null}
       </ScrollView>
@@ -214,7 +214,9 @@ export function GuidedSearchWizardScreen() {
           setLocValue(location || '');
         }}
         onSelect={(result) => {
-          setLocation(result.formattedAddress || result.name || '');
+          // Keep the place ID: the backend matches it exactly (and searches
+          // nearby) instead of guessing from the text.
+          setLocation(result.name || result.formattedAddress || '', result.placeId || '');
           setLocOpen(false);
         }}
       />
@@ -281,6 +283,19 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.semibold,
     fontSize: typography.size.sm,
     color: colors.text,
+  },
+  sectionHint: {
+    marginLeft: 'auto',
+    fontFamily: typography.fontFamily.regular,
+    fontSize: 11,
+    color: colors.textMuted,
+  },
+  group: { marginBottom: spacing.sm },
+  groupTitle: {
+    marginBottom: 6,
+    fontFamily: typography.fontFamily.semibold,
+    fontSize: 12,
+    color: colors.textSecondary,
   },
   dropdown: {
     flexDirection: 'row',

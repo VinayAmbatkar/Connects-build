@@ -26,7 +26,6 @@ type Props = {
   searchValue?: string;
   onSearchChange?: (value: string) => void;
   onSearchSubmit?: () => void;
-  onFilterPress?: () => void;
 };
 
 type MenuAnchor = { top: number; right: number };
@@ -46,7 +45,6 @@ export function AppHeader({
   searchValue,
   onSearchChange,
   onSearchSubmit,
-  onFilterPress,
 }: Props) {
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
@@ -174,13 +172,6 @@ export function AppHeader({
                 Search posts, people, companies...
               </Text>
             )}
-            <Pressable
-              onPress={onFilterPress ?? openSearch}
-              hitSlop={8}
-              accessibilityLabel="Search filters"
-            >
-              <Ionicons name="options-outline" size={17} color={colors.textSecondary} />
-            </Pressable>
           </Pressable>
         ) : null}
       </View>

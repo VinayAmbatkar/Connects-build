@@ -19,7 +19,4 @@ export const profileApi = {
     apiClient
       .get<ProfessionalProfile>(`/profile/professional/${userId}`)
       .then((r) => r.data),
-
-  verifyGst: (gstNumber: string) =>
-    apiClient.post('/profile/gst/verify', { gstNumber }).then((r) => r.data),
 };

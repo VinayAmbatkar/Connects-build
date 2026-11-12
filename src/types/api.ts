@@ -1,3 +1,5 @@
+import type { Credential } from '@/src/api/credentials';
+
 export type AuthTokens = {
   accessToken: string;
   refreshToken: string;
@@ -25,6 +27,11 @@ export type SignupPayload = {
 };
 
 export type ProfessionalProfile = {
+  /** Set when the viewer's plan doesn't include full profiles: the rest of
+   *  this object is the redacted profile and `offer` says what to show. */
+  lockedFeature?: string;
+  offer?: import('@/src/api/freemium').FreemiumOffer;
+  projectCount?: number;
   fullName?: string;
   email?: string;
   website?: string;
@@ -43,7 +50,9 @@ export type ProfessionalProfile = {
   specializationIds?: string[];
   projectTypeIds?: string[];
   topSkills?: string[];
-  certifications?: Certification[];
+  /** Self-reported licences / certifications (Backend internal/credential). */
+  licenses?: Credential[];
+  certifications?: Credential[];
   categorySelections?: unknown[];
   linkedIn?: string;
   instagram?: string;
@@ -51,7 +60,7 @@ export type ProfessionalProfile = {
   /** Profile badge (models.User.Verified) -- true once Aadhaar OKYC or a
    *  manual verification is approved. */
   verified?: boolean;
-  /** BUSINESS_OWNER | EMPLOYEE for Consultants/Contractors/Vendors. */
+  /** BUSINESS_OWNER | EMPLOYEE | INDIVIDUAL_CONSULTANT for Consultants/Contractors/Vendors. */
   employmentType?: string;
   /** @deprecated never sent by the backend; use `verified`. */
   businessVerified?: boolean;
@@ -214,7 +223,36 @@ export type Message = {
   attachmentUrl?: string;
   attachmentType?: 'image' | 'pdf' | 'audio' | string;
   attachmentName?: string;
+  /** Set on a group-chat message (conversationId is then 0). */
+  groupId?: number;
+  /** Who wrote it -- filled for group messages. */
+  senderName?: string;
   [key: string]: unknown;
+};
+
+/** Mirrors internal/message.GroupMemberResponse. */
+export type GroupMember = {
+  userId: string;
+  name: string;
+  userRole?: string;
+  role: 'admin' | 'member';
+  online: boolean;
+  joinedAt: string;
+};
+
+/** Mirrors internal/message.GroupResponse. members only from groupsApi.get. */
+export type GroupChat = {
+  id: number;
+  name: string;
+  createdById: string;
+  myRole: 'admin' | 'member';
+  memberCount: number;
+  maxMembers: number;
+  lastMessagePreview: string;
+  lastMessageAt: string;
+  unreadCount: number;
+  createdAt: string;
+  members?: GroupMember[];
 };
 
 export type Connection = {
@@ -278,18 +316,6 @@ export type Project = {
   [key: string]: unknown;
 };
 
-export type Certification = {
-  id?: string | number;
-  name?: string;
-  title?: string;
-  issuer?: string;
-  issuedDate?: string;
-  issueDate?: string;
-  credentialId?: string;
-  credentialUrl?: string;
-  skills?: string[];
-  [key: string]: unknown;
-};
 
 export type Listing = {
   id: string | number;
@@ -301,13 +327,21 @@ export type Listing = {
   [key: string]: unknown;
 };
 
+// Mirrors Backend-tech internal/notification NotificationResponse.
 export type NotificationItem = {
-  id: string | number;
-  title?: string;
-  body?: string;
-  read?: boolean;
-  createdAt?: string;
-  [key: string]: unknown;
+  id: number;
+  actorId: string;
+  actorName?: string;
+  type: string;
+  message: string;
+  referenceId?: number;
+  isRead: boolean;
+  createdAt: string;
+};
+
+export type NotificationListResponse = {
+  notifications: NotificationItem[];
+  unreadCount: number;
 };
 
 export type PremiumPlan = {
@@ -329,7 +363,7 @@ export type SupportCase = {
 };
 
 /** Verification types matching backend */
-export type VerificationRequestType = 'AADHAAR' | 'GST_TAN' | 'LICENSE' | 'EMPLOYEE';
+export type VerificationRequestType = 'AADHAAR' | 'GST_TAN' | 'LICENSE' | 'EMPLOYEE' | 'INDIVIDUAL_CONSULTANT';
 export type VerificationStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type GSTVerificationStatus = 'PENDING' | 'VERIFIED' | 'MISMATCH' | 'INACTIVE' | 'FAILED' | '';
 
@@ -395,6 +429,8 @@ export interface VerificationStatusResponse {
   gstTan: VerificationRequestSummary | null;
   license: VerificationRequestSummary | null;
   employee: VerificationRequestSummary | null;
+  /** Individual Consultant's licence + proof-of-consultancy review. */
+  individualConsultant?: VerificationRequestSummary | null;
   employeeEmail: EmployeeEmailVerificationStatus | null;
   gst: GSTVerificationResult | null;
 }

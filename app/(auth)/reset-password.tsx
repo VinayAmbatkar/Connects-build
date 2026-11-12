@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '@/src/components/Button';
@@ -9,6 +9,7 @@ import { authApi } from '@/src/api/auth';
 import { getErrorMessage } from '@/src/api/client';
 import { colors, spacing, typography } from '@/src/theme/tokens';
 
+import { appAlert } from '@/src/components/AppDialog';
 export default function ResetPasswordScreen() {
   const [token, setToken] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -16,17 +17,17 @@ export default function ResetPasswordScreen() {
 
   const submit = async () => {
     if (!token.trim() || !newPassword) {
-      Alert.alert('Missing info', 'Enter the reset token and a new password.');
+      appAlert('Missing info', 'Enter the reset token and a new password.');
       return;
     }
     setLoading(true);
     try {
       await authApi.resetPassword(token.trim(), newPassword);
-      Alert.alert('Password updated', 'You can sign in with your new password.', [
+      appAlert('Password updated', 'You can sign in with your new password.', [
         { text: 'OK', onPress: () => router.replace('/(auth)/login') },
       ]);
     } catch (error) {
-      Alert.alert('Reset failed', getErrorMessage(error));
+      appAlert('Reset failed', getErrorMessage(error));
     } finally {
       setLoading(false);
     }

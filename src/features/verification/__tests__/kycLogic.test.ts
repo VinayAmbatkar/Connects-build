@@ -257,3 +257,35 @@ describe('getKycProgress (profile badge / promo card)', () => {
     expect(p.remaining).toEqual(['identity']);
   });
 });
+
+describe('individual consultant flow', () => {
+  const none = { aadhaar: false, gst: false, workEmail: false, licence: false };
+
+  it('routes Individual Consultants to the licence review, not GST', () => {
+    expect(resolveKycFlow('CONSULTANTS', 'INDIVIDUAL_CONSULTANT')).toBe('consultant');
+    expect(resolveKycFlow('VENDORS', 'individual_consultant')).toBe('consultant');
+    expect(resolveKycFlow('CONSULTANTS', 'BUSINESS_OWNER')).toBe('business');
+    expect(resolveKycFlow('CONSULTANTS', 'EMPLOYEE')).toBe('employee');
+    expect(stepsForFlow('consultant')).toEqual(['identity', 'licence']);
+  });
+
+  it('completes only once Aadhaar and the licence review are both approved', () => {
+    expect(currentStepIndex('consultant', { ...none, aadhaar: true })).toBe(1);
+    expect(isFlowComplete('consultant', { ...none, aadhaar: true })).toBe(false);
+    expect(isFlowComplete('consultant', { ...none, licence: true })).toBe(false);
+    expect(isFlowComplete('consultant', { ...none, aadhaar: true, licence: true })).toBe(true);
+  });
+
+  it('reports a pending licence as remaining', () => {
+    const status = {
+      aadhaar: { status: 'APPROVED' },
+      individualConsultant: { status: 'PENDING' },
+    } as unknown as VerificationStatusResponse;
+    expect(getKycProgress('consultant', status)).toMatchObject({ complete: false, remaining: ['licence'] });
+    const approved = {
+      ...status,
+      individualConsultant: { status: 'APPROVED' },
+    } as unknown as VerificationStatusResponse;
+    expect(getKycProgress('consultant', approved)).toMatchObject({ complete: true, remaining: [] });
+  });
+});

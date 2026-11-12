@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  Alert,
   Dimensions,
   FlatList,
   Image,
@@ -18,12 +17,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BrandHeader } from '@/src/features/onboarding/BrandHeader';
+import { BrandTaglineFooter } from '@/src/components/BrandTaglineFooter';
 import { SignupAccountFooter } from '@/src/components/SignupAccountFooter';
 import { StepProgress } from '@/src/components/StepProgress';
 import { DEFAULT_ROLES, type AppRole } from '@/src/constants/app';
 import { useSignupStore } from '@/src/store/signupStore';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
+import { appAlert } from '@/src/components/AppDialog';
 const signupHero = require('../../../assets/images/Onboarding/loginimg-bg.webp');
 const BRAND = '#F57D01';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -73,7 +74,7 @@ export default function SignupRoleScreen() {
   const continueNext = () => {
     const selected = draft.role || roles[index]?.value;
     if (!selected) {
-      Alert.alert('Select a role', 'Choose the role that best describes you.');
+      appAlert('Select a role', 'Choose the role that best describes you.');
       return;
     }
     if (!draft.role) update({ role: selected });
@@ -183,28 +184,29 @@ export default function SignupRoleScreen() {
           ))}
         </View>
 
-        <View style={styles.footer}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-            onPress={() => router.back()}
-            style={({ pressed }) => [styles.backCircle, pressed && styles.pressed]}
-          >
-            <Ionicons name="chevron-back" size={24} color={BRAND} />
-          </Pressable>
+        <View style={styles.bottomGroup}>
+          <View style={styles.footer}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+              onPress={() => router.back()}
+              style={({ pressed }) => [styles.backCircle, pressed && styles.pressed]}
+            >
+              <Ionicons name="chevron-back" size={24} color={BRAND} />
+            </Pressable>
 
-          <Pressable
-            accessibilityRole="button"
-            onPress={continueNext}
-            style={({ pressed }) => [styles.nextBtn, pressed && styles.pressed]}
-          >
-            <Text style={styles.nextText}>Next</Text>
-            <Ionicons name="arrow-forward" size={18} color={colors.white} />
-          </Pressable>
-        </View>
+            <Pressable
+              accessibilityRole="button"
+              onPress={continueNext}
+              style={({ pressed }) => [styles.nextBtn, pressed && styles.pressed]}
+            >
+              <Text style={styles.nextText}>Next</Text>
+              <Ionicons name="arrow-forward" size={18} color={colors.white} />
+            </Pressable>
+          </View>
 
-        <View style={styles.accountFooter}>
           <SignupAccountFooter />
+          <BrandTaglineFooter />
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -363,6 +365,10 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: spacing.xl,
   },
+  bottomGroup: {
+    marginTop: 'auto',
+    gap: spacing.md,
+  },
   dot: {
     width: 8,
     height: 8,
@@ -379,10 +385,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-  },
-  accountFooter: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
   },
   backCircle: {
     width: 54,

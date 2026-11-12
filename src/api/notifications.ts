@@ -1,9 +1,11 @@
 import { apiClient } from '@/src/api/client';
-import type { NotificationItem } from '@/src/types/api';
+import type { NotificationListResponse } from '@/src/types/api';
 
 export const notificationsApi = {
   list: () =>
-    apiClient.get<NotificationItem[]>('/notifications').then((r) => r.data),
+    apiClient
+      .get<NotificationListResponse>('/notifications')
+      .then((r) => r.data.notifications ?? []),
   unreadCount: () =>
     apiClient
       .get<{ count?: number }>('/notifications/unread-count')

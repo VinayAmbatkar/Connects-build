@@ -1,10 +1,12 @@
 import { forwardRef, type ReactNode } from 'react';
 import {
+  StyleProp,
   StyleSheet,
   Text,
   TextInput,
   TextInputProps,
   View,
+  ViewStyle,
 } from 'react-native';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
@@ -14,19 +16,35 @@ type Props = TextInputProps & {
   required?: boolean;
   leftAddon?: ReactNode;
   rightAddon?: ReactNode;
+  labelSuffix?: string;
+  inputRowStyle?: StyleProp<ViewStyle>;
 };
 
 export const TextField = forwardRef<TextInput, Props>(
-  ({ label, error, required, leftAddon, rightAddon, style, ...props }, ref) => {
+  (
+    {
+      label,
+      error,
+      required,
+      leftAddon,
+      rightAddon,
+      style,
+      labelSuffix,
+      inputRowStyle,
+      ...props
+    },
+    ref,
+  ) => {
     return (
       <View style={styles.wrap}>
         {label ? (
           <Text style={styles.label}>
             {label}
+            {labelSuffix ? <Text style={styles.labelSuffix}>{labelSuffix}</Text> : null}
             {required ? <Text style={styles.required}> *</Text> : null}
           </Text>
         ) : null}
-        <View style={[styles.inputRow, error ? styles.inputError : null]}>
+        <View style={[styles.inputRow, inputRowStyle, error ? styles.inputError : null]}>
           {leftAddon}
           <TextInput
             ref={ref}
@@ -57,6 +75,10 @@ const styles = StyleSheet.create({
   required: {
     color: colors.danger,
     fontFamily: typography.fontFamily.semibold,
+  },
+  labelSuffix: {
+    color: colors.textSecondary,
+    fontFamily: typography.fontFamily.regular,
   },
   inputRow: {
     minHeight: 52,

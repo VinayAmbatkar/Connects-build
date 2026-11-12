@@ -13,7 +13,10 @@ import {
   GST_MESSAGES,
   type AttemptState,
   type KycFlow,
+  MAX_DOCUMENT_BYTES,
+  MAX_VERIFICATION_DOCUMENTS,
   RESEND_SECONDS,
+  consultantReviewStatus,
   digitsOnly,
   getKycProgress,
   gstErrorMessage,
@@ -520,3 +523,119 @@ export function useWorkEmailKyc(status?: VerificationStatusResponse) {
 }
 
 export type WorkEmailKyc = ReturnType<typeof useWorkEmailKyc>;
+
+// ── Step 2c: licence review (Individual Consultants) ─────────────────────
+
+export type PickedDocument = { uri: string; name: string; type: string; size?: number; file?: File };
+
+export function useConsultantKyc(status?: VerificationStatusResponse, defaultLegalName = '') {
+  const { refresh } = useStatusCache();
+  const review = consultantReviewStatus(status);
+  const record = status?.individualConsultant ?? null;
+
+  const [legalName, setLegalNameState] = useState(defaultLegalName);
+  const [licensingAuthority, setLicensingAuthority] = useState('');
+  const [licenseNumber, setLicenseNumber] = useState('');
+  const [certifications, setCertifications] = useState('');
+  const [documents, setDocuments] = useState<PickedDocument[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inFlight = useRef(false);
+  const prefilled = useRef(!!defaultLegalName);
+
+  useEffect(() => {
+    if (!prefilled.current && defaultLegalName) {
+      prefilled.current = true;
+      setLegalNameState((current) => current || defaultLegalName);
+    }
+  }, [defaultLegalName]);
+
+  const addDocuments = useCallback((picked: PickedDocument[]) => {
+    setError(null);
+    const tooLarge = picked.filter((d) => (d.size ?? 0) > MAX_DOCUMENT_BYTES);
+    const ok = picked.filter((d) => (d.size ?? 0) <= MAX_DOCUMENT_BYTES);
+    if (tooLarge.length) setError('Each document must be a PDF of 10 MB or less.');
+    setDocuments((prev) => {
+      const merged = [...prev];
+      for (const doc of ok) {
+        if (!merged.some((d) => d.uri === doc.uri)) merged.push(doc);
+      }
+      if (merged.length > MAX_VERIFICATION_DOCUMENTS) {
+        setError(`You can attach up to ${MAX_VERIFICATION_DOCUMENTS} documents.`);
+      }
+      return merged.slice(0, MAX_VERIFICATION_DOCUMENTS);
+    });
+  }, []);
+
+  const removeDocument = useCallback((uri: string) => {
+    setDocuments((prev) => prev.filter((d) => d.uri !== uri));
+  }, []);
+
+  const canSubmit =
+    !!legalName.trim() && !!licenseNumber.trim() && documents.length > 0 && !submitting;
+
+  const submit = useCallback(async () => {
+    if (inFlight.current) return;
+    if (!legalName.trim() || !licenseNumber.trim()) {
+      setError('Enter your full legal name and licence / registration number.');
+      return;
+    }
+    if (!documents.length) {
+      setError('Attach your licence and proof of consultancy (PDF).');
+      return;
+    }
+    inFlight.current = true;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await verificationApi.submitIndividualConsultant(
+        legalName.trim(),
+        licenseNumber.trim(),
+        // On web the picker gives a real File, which FormData needs there.
+        documents.map((d) => (d.file ?? { uri: d.uri, name: d.name, type: d.type })) as {
+          uri: string;
+          name: string;
+          type: string;
+        }[],
+        licensingAuthority.trim() || undefined,
+        certifications.trim() || undefined,
+      );
+      setDocuments([]);
+      refresh();
+    } catch (e) {
+      setError(parseKycError(e, "Couldn't submit your licence. Please try again.").message);
+    } finally {
+      inFlight.current = false;
+      setSubmitting(false);
+    }
+  }, [legalName, licenseNumber, documents, licensingAuthority, certifications, refresh]);
+
+  return {
+    review,
+    record,
+    approved: review === 'APPROVED',
+    legalName,
+    setLegalName: (value: string) => {
+      setLegalNameState(value);
+      setError(null);
+    },
+    licensingAuthority,
+    setLicensingAuthority,
+    licenseNumber,
+    setLicenseNumber: (value: string) => {
+      setLicenseNumber(value);
+      setError(null);
+    },
+    certifications,
+    setCertifications,
+    documents,
+    addDocuments,
+    removeDocument,
+    submitting,
+    error,
+    canSubmit,
+    submit,
+  };
+}
+
+export type ConsultantKyc = ReturnType<typeof useConsultantKyc>;

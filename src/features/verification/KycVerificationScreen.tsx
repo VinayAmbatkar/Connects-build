@@ -11,11 +11,11 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getErrorMessage } from '@/src/api/client';
-import { ErrorState, LoadingState } from '@/src/components/EmptyState';
+import { ErrorState } from '@/src/components/EmptyState';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 import { AadhaarStep } from '@/src/features/verification/components/AadhaarStep';
 import { KycHero, KycTrustSection } from '@/src/features/verification/components/KycOverview';
-import { GstStep, WorkEmailStep } from '@/src/features/verification/components/SecondarySteps';
+import { ConsultantStep, GstStep, WorkEmailStep } from '@/src/features/verification/components/SecondarySteps';
 import {
   DetailRow,
   FadeInView,
@@ -26,6 +26,7 @@ import {
 } from '@/src/features/verification/components/kycUi';
 import {
   useAadhaarKyc,
+  useConsultantKyc,
   useGstKyc,
   useKycContext,
   useWorkEmailKyc,
@@ -33,11 +34,13 @@ import {
 import { currentStepIndex, isFlowComplete } from '@/src/features/verification/kycLogic';
 import type { VerificationRequestSummary } from '@/src/types/api';
 
+import { DetailSkeleton } from '@/src/components/Skeleton';
 export function KycVerificationScreen() {
   const ctx = useKycContext();
   const aadhaar = useAadhaarKyc(ctx.status);
   const gst = useGstKyc(ctx.status, ctx.profile?.company?.trim() ?? '');
   const workEmail = useWorkEmailKyc(ctx.status);
+  const consultant = useConsultantKyc(ctx.status, ctx.status?.aadhaar?.legalName?.trim() || ctx.profileName);
 
   const goBack = () => (router.canGoBack() ? router.back() : router.replace('/(tabs)/profile'));
   const editProfile = () => router.push('/edit-profile');
@@ -56,7 +59,7 @@ export function KycVerificationScreen() {
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
         {header}
-        <LoadingState />
+        <DetailSkeleton />
       </SafeAreaView>
     );
   }
@@ -75,7 +78,12 @@ export function KycVerificationScreen() {
   }
 
   const { flow } = ctx;
-  const done = { aadhaar: aadhaar.approved, gst: gst.verified, workEmail: workEmail.verified };
+  const done = {
+    aadhaar: aadhaar.approved,
+    gst: gst.verified,
+    workEmail: workEmail.verified,
+    licence: consultant.approved,
+  };
   const celebrating = aadhaar.step === 'success';
   const complete = isFlowComplete(flow, done) && !celebrating;
   // The Aadhaar card stays up while the user is mid-flow or celebrating.
@@ -121,6 +129,14 @@ export function KycVerificationScreen() {
             )
           ) : null}
 
+          {flow === 'consultant' && !celebrating ? (
+            aadhaar.approved ? (
+              <ConsultantStep consultant={consultant} />
+            ) : (
+              <LockedStep icon="document-text-outline" title="Verify your professional licence" />
+            )
+          ) : null}
+
           {complete ? (
             <FadeInView style={styles.badgeReady}>
               <View testID="kyc-complete" style={styles.badgeReadyInner}>
@@ -158,7 +174,13 @@ function AadhaarVerifiedCard({ record }: { record: VerificationRequestSummary | 
   );
 }
 
-function LockedStep({ icon, title }: { icon: 'business-outline' | 'mail-outline'; title: string }) {
+function LockedStep({
+  icon,
+  title,
+}: {
+  icon: 'business-outline' | 'mail-outline' | 'document-text-outline';
+  title: string;
+}) {
   return (
     <View style={styles.locked} testID="kyc-locked-step">
       <View style={styles.lockedIcon}>

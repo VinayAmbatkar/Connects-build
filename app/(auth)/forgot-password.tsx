@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '@/src/components/Button';
@@ -9,25 +9,26 @@ import { authApi } from '@/src/api/auth';
 import { getErrorMessage } from '@/src/api/client';
 import { colors, spacing, typography } from '@/src/theme/tokens';
 
+import { appAlert } from '@/src/components/AppDialog';
 export default function ForgotPasswordScreen() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
 
   const submit = async () => {
     if (!email.trim()) {
-      Alert.alert('Email required', 'Enter the email for your account.');
+      appAlert('Email required', 'Enter the email for your account.');
       return;
     }
     setLoading(true);
     try {
       await authApi.forgotPassword(email.trim());
-      Alert.alert(
+      appAlert(
         'Check your email',
         'If an account exists, we sent a password reset link.',
         [{ text: 'OK', onPress: () => router.push('/(auth)/reset-password') }],
       );
     } catch (error) {
-      Alert.alert('Request failed', getErrorMessage(error));
+      appAlert('Request failed', getErrorMessage(error));
     } finally {
       setLoading(false);
     }

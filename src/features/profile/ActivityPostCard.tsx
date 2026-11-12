@@ -1,3 +1,4 @@
+import { commentsApi } from '@/src/api/social';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Pressable,
@@ -19,6 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { Avatar } from '@/src/components/Avatar';
 import { PhotoCarousel } from '@/src/components/PhotoCarousel';
+import { VideoPlayer } from '@/src/components/VideoPlayer';
 import { BottomSheet } from '@/src/components/BottomSheet';
 import { getEventPhotoUrls } from '@/src/api/events';
 import {
@@ -29,10 +31,15 @@ import {
 } from '@/src/features/profile/profileFormat';
 import { useAuthStore } from '@/src/store/authStore';
 import { eventsApi, apiClient } from '@/src/api/events';
+import { getErrorMessage } from '@/src/api/client';
 import { searchApi } from '@/src/api/search';
+import { patchEventEverywhere } from '@/src/features/events/feedCache';
 import type { EventItem, Comment, ProfessionalSearchResult } from '@/src/types/api';
 import { colors, spacing, typography, radius } from '@/src/theme/tokens';
 
+import { appAlert } from '@/src/components/AppDialog';
+import { usePlaceLabel } from '@/src/hooks/usePlaceLabels';
+import { getWebOrigin } from '@/src/constants/app';
 type Props = {
   item: EventItem;
   authorName?: string;
@@ -95,16 +102,20 @@ export function ActivityPostCard({
 
   const body = item.description?.trim() ?? '';
   const preview = truncateText(body, 180);
-  const displayName = authorName ?? item.ownerName ?? item.authorName ?? item.title ?? 'You';
   const postedAt = item.createdAt ?? item.eventDate;
   const photos = getEventPhotoUrls(item);
   const profileId = authorProfileId(item);
+  const myName = useAuthStore((s) => s.user?.fullName);
   const verified = item.ownerVerified === true;
   const businessVerified = item.ownerBusinessVerified === true;
   const roleLine = headline ?? formatRoleLabel(item.ownerRole);
   const timeLine = formatRelativeTime(postedAt);
   const viewingOwn =
     isOwn || (profileId != null && myId != null && String(profileId) === String(myId));
+  // The post title used to be the last fallback here, so a post with no
+  // owner name showed its title as the author.
+  const displayName =
+    authorName ?? item.ownerName ?? item.authorName ?? (viewingOwn ? myName : undefined) ?? 'Member';
 
   const openEvent = () => {
     if (item.id == null || item.id === '') return;
@@ -145,9 +156,14 @@ export function ActivityPostCard({
       } else {
         await eventsApi.unlikeEvent(item.id);
       }
-      // Invalidate to sync with server
-      queryClient.invalidateQueries({ queryKey: ['events-feed'] });
-      queryClient.invalidateQueries({ queryKey: ['event', String(item.id)] });
+      // Patch the cached copies (feed, profile lists, detail) so the state
+      // survives scrolling -- invalidating ['events-feed'] here used to
+      // re-download every loaded feed page after each tap.
+      patchEventEverywhere(queryClient, item.id, (e) => ({
+        ...e,
+        likedByMe: nextLiked,
+        likeCount: Math.max(0, nextCount),
+      }));
     } catch {
       // Rollback on error
       setLikedByMe(likedByMe);
@@ -166,15 +182,25 @@ export function ActivityPostCard({
   }, [commentAnim]);
 
   const handleShare = useCallback(async () => {
-    const eventUrl = `${Platform.OS === 'web' ? window.location.origin : 'https://www.cobilds.com'}/event/${item.id}`;
-    const shareTitle = item.title ?? 'Check out this post';
-    const shareMessage = body.slice(0, 200) + (body.length > 200 ? '...' : '');
+    // The link goes inside the message: Android ignores Share's `url`
+    // field (iOS-only), so it used to share the text with no link at all.
+    // The site has no per-post page, so this points at COBILDS itself.
+    const siteUrl = Platform.OS === 'web' ? window.location.origin : getWebOrigin();
+    const shareTitle = item.title?.trim() || 'A post on COBILDS';
+    const snippet = body.length > 200 ? `${body.slice(0, 200).trimEnd()}…` : body;
+    const author = item.authorName ? ` by ${item.authorName}` : '';
+    const shareMessage = [
+      `${shareTitle}${author}`,
+      snippet,
+      `See more on COBILDS: ${siteUrl}`,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
 
     try {
       const result = await Share.share({
         title: shareTitle,
         message: shareMessage,
-        url: eventUrl,
       });
 
       if (result.action === Share.sharedAction) {
@@ -182,17 +208,53 @@ export function ActivityPostCard({
         setSharedByMe(true);
         // Optimistic update, then sync
         await eventsApi.shareEvent(item.id);
-        queryClient.invalidateQueries({ queryKey: ['events-feed'] });
-        queryClient.invalidateQueries({ queryKey: ['event', String(item.id)] });
+        patchEventEverywhere(queryClient, item.id, (e) => ({
+          ...e,
+          sharedByMe: true,
+          shareCount: (e.shareCount ?? 0) + (e.sharedByMe ? 0 : 1),
+        }));
       }
     } catch (e) {
       console.warn('Share failed', e);
     }
-  }, [item.id, item.title, body, queryClient]);
+  }, [item.id, item.title, item.authorName, body, queryClient]);
 
-  const onCommentAdded = useCallback(() => {
-    setCommentCount((c) => c + 1);
-  }, []);
+  const handleDelete = useCallback(async () => {
+    try {
+      await eventsApi.remove(item.id);
+      // Invalidate all relevant queries to trigger immediate refetch
+      queryClient.invalidateQueries({ queryKey: ['my-events'] });
+      queryClient.invalidateQueries({ queryKey: ['events-feed'] });
+      queryClient.invalidateQueries({ queryKey: ['user-events'] });
+      queryClient.invalidateQueries({ queryKey: ['event', String(item.id)] });
+      appAlert('Deleted', 'Your post has been removed.');
+    } catch (e) {
+      appAlert("Couldn't delete", getErrorMessage(e));
+    }
+  }, [item.id, queryClient]);
+
+  const handleMoreOptions = useCallback(() => {
+    if (!viewingOwn) return;
+    appAlert('Delete post?', 'This action cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: handleDelete,
+      },
+    ]);
+  }, [viewingOwn, handleDelete]);
+
+  const onCommentCountChange = useCallback(
+    (delta: number) => {
+      setCommentCount((c) => Math.max(0, c + delta));
+      patchEventEverywhere(queryClient, item.id, (e) => ({
+        ...e,
+        commentCount: Math.max(0, (e.commentCount ?? 0) + delta),
+      }));
+    },
+    [queryClient, item.id],
+  );
 
   const onCommentsClose = useCallback(() => {
     Keyboard.dismiss();
@@ -200,7 +262,8 @@ export function ActivityPostCard({
   }, []);
 
   const hasStats = likeCount > 0 || commentCount > 0 || shareCount > 0;
-  const metaLine = [roleLine, item.location].filter(Boolean).join(' · ');
+  const locationLabel = usePlaceLabel(item.location);
+  const metaLine = [roleLine, locationLabel].filter(Boolean).join(' · ');
   const statsRight = [
     commentCount > 0 ? `${formatCount(commentCount)} comment${commentCount === 1 ? '' : 's'}` : null,
     shareCount > 0 ? `${formatCount(shareCount)} share${shareCount === 1 ? '' : 's'}` : null,
@@ -267,10 +330,10 @@ export function ActivityPostCard({
         </Pressable>
         <Pressable
           hitSlop={10}
-          onPress={openEvent}
+          onPress={handleMoreOptions}
           style={styles.moreBtn}
           accessibilityRole="button"
-          accessibilityLabel="More options"
+          accessibilityLabel={viewingOwn ? 'Post options' : 'More options'}
         >
           <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
         </Pressable>
@@ -303,16 +366,20 @@ export function ActivityPostCard({
           aspectRatio={4 / 3}
           borderRadius={isFeed ? 0 : radius.md}
           style={styles.carousel}
+          resizeMode="contain"
+          backgroundColor={colors.white}
           onPress={openEvent}
         />
       ) : null}
+
+      {item.videoUrl ? <VideoTile url={item.videoUrl} rounded={!isFeed} /> : null}
 
       {hasStats ? (
         <View style={[styles.statsRow, isFeed && styles.inset]}>
           {likeCount > 0 ? (
             <View style={styles.statsLikes}>
               <View style={styles.likeBubble}>
-                <Ionicons name="thumbs-up" size={9} color={colors.white} />
+                <Ionicons name="heart" size={9} color={colors.white} />
               </View>
               <Text style={styles.statsText}>{formatCount(likeCount)}</Text>
             </View>
@@ -339,12 +406,12 @@ export function ActivityPostCard({
         >
           <Animated.View style={{ transform: [{ scale: likeAnim }] }}>
             <Ionicons
-              name={likedByMe ? 'thumbs-up' : 'thumbs-up-outline'}
+              name={likedByMe ? 'heart' : 'heart-outline'}
               size={ACTION_ICON_SIZE}
-              color={likedByMe ? colors.primary : colors.textSecondary}
+              color={likedByMe ? LIKE_RED : colors.textSecondary}
             />
           </Animated.View>
-          <Text style={[styles.postActionLabel, likedByMe && styles.postActionLabelActive]}>
+          <Text style={[styles.postActionLabel, likedByMe && styles.postActionLabelLiked]}>
             Like
           </Text>
         </TouchableOpacity>
@@ -391,30 +458,59 @@ export function ActivityPostCard({
         eventId={String(item.id)}
         initialComments={item.comments ?? []}
         commentCount={commentCount}
-        onCommentAdded={onCommentAdded}
+        onCommentCountChange={onCommentCountChange}
       />
     </View>
   );
 }
 
 /* Comment Bottom Sheet Component - Uses the app's BottomSheet with proper Modal */
+/** Applies fn to the comment with this id, wherever it sits in the reply tree. */
+function updateInTree(list: Comment[], id: string | number, fn: (c: Comment) => Comment): Comment[] {
+  return list.map((c) => {
+    if (String(c.id) === String(id)) return fn(c);
+    return c.replies?.length ? { ...c, replies: updateInTree(c.replies, id, fn) } : c;
+  });
+}
+
+/** Removes a comment (and so its replies) from the tree, fixing the parent's reply count. */
+function removeFromTree(list: Comment[], id: string | number): Comment[] {
+  return list
+    .filter((c) => String(c.id) !== String(id))
+    .map((c) => {
+      if (!c.replies?.length) return c;
+      const replies = removeFromTree(c.replies, id);
+      return replies.length === c.replies.length
+        ? c
+        : { ...c, replies, replyCount: Math.max(0, (c.replyCount ?? replies.length + 1) - 1) };
+    });
+}
+
 function CommentBottomSheet({
   visible,
   onClose,
   eventId,
   initialComments,
   commentCount,
-  onCommentAdded,
+  onCommentCountChange,
 }: {
   visible: boolean;
   onClose: () => void;
   eventId: string;
   initialComments: Comment[];
   commentCount: number;
-  onCommentAdded: () => void;
+  onCommentCountChange: (delta: number) => void;
 }) {
-  const queryClient = useQueryClient();
   const myId = useAuthStore((s) => s.user?.id);
+  const myName = useAuthStore((s) => s.user?.fullName);
+  // Top-level comments whose reply thread is open. Lifted up here (it was
+  // per-row state) so posting a reply can open that thread -- replies used
+  // to land inside a collapsed thread, which looked like nothing happened.
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  // People picked from the @ suggestions, so their ids go with the
+  // comment. The old regex only took the first word after @, so a
+  // two-word name like "Rahul Rao" never matched and never notified.
+  const [pickedMentions, setPickedMentions] = useState<Array<{ id: string | number; name: string }>>([]);
   const [comments, setComments] = useState<Comment[]>(initialComments);
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState('');
@@ -422,6 +518,7 @@ function CommentBottomSheet({
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Comment | null>(null);
+  const [editingComment, setEditingComment] = useState<Comment | null>(null);
   const [showMentions, setShowMentions] = useState(false);
   const [mentions, setMentions] = useState<Array<{ id: string | number; fullName?: string; name?: string }>>([]);
   const inputRef = useRef<any>(null);
@@ -469,21 +566,27 @@ function CommentBottomSheet({
       setHasMore(false);
       setInput('');
       setReplyingTo(null);
+      setEditingComment(null);
+      setPickedMentions([]);
+      setExpandedIds(new Set());
     }
   }, [visible, fetchComments]);
 
   // Fetch mentions for @ suggestions using search API
   const [mentionSearchDebounce, setMentionSearchDebounce] = useState('');
 
+  // The @word being typed at the end of the text (it used to only work
+  // when @ was the very first character of the comment).
+  const activeMentionQuery = /(^|\s)@([^\s@]*)$/.exec(input)?.[2] ?? null;
+
   useEffect(() => {
-    if (input.startsWith('@')) {
-      const query = input.slice(1).toLowerCase();
-      setMentionSearchDebounce(query);
+    if (activeMentionQuery != null) {
+      setMentionSearchDebounce(activeMentionQuery.toLowerCase());
     } else {
       setMentionSearchDebounce('');
       setMentions([]);
     }
-  }, [input]);
+  }, [activeMentionQuery]);
 
   useEffect(() => {
     if (!mentionSearchDebounce || mentionSearchDebounce.length < 2) {
@@ -520,101 +623,77 @@ function CommentBottomSheet({
     const name = user.fullName ?? user.name ?? 'User';
     const beforeAt = input.lastIndexOf('@');
     if (beforeAt >= 0) {
-      const newInput = input.slice(0, beforeAt) + `@${name} `;
-      setInput(newInput);
+      setInput(input.slice(0, beforeAt) + `@${name} `);
+      setPickedMentions((prev) =>
+        prev.some((m) => String(m.id) === String(user.id)) ? prev : [...prev, { id: user.id, name }],
+      );
       setTimeout(() => inputRef.current?.focus(), 50);
     }
     setShowMentions(false);
   };
 
-  // Extract mentioned user IDs from input (for API)
-  const extractMentionedUserIds = (text: string): (string | number)[] => {
-    const ids: (string | number)[] = [];
-    const mentionRegex = /@(\w+)/g;
-    let match;
-    while ((match = mentionRegex.exec(text)) !== null) {
-      const mentionName = match[1];
-      const user = mentions.find((m) => (m.fullName ?? m.name)?.toLowerCase() === mentionName.toLowerCase());
-      if (user) {
-        ids.push(user.id);
-      }
-    }
-    return [...new Set(ids)];
-  };
+  // Ids of picked people whose "@Full Name" is still in the text.
+  const extractMentionedUserIds = (text: string): (string | number)[] =>
+    pickedMentions.filter((m) => text.includes(`@${m.name}`)).map((m) => m.id);
 
   const handleSend = async () => {
     const text = input.trim();
     if (!text || sending) return;
     setSending(true);
+    if (editingComment) {
+      try {
+        await commentsApi.update(editingComment.id, text);
+        setComments((prev) =>
+          updateInTree(prev, editingComment.id, (c) => ({ ...c, body: text, updatedAt: new Date().toISOString() })),
+        );
+        setEditingComment(null);
+        setInput('');
+      } catch (e) {
+        appAlert("Couldn't edit comment", getErrorMessage(e));
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
     try {
       const mentionedUserIds = extractMentionedUserIds(text);
-      const newComment = await eventsApi.addComment(eventId, text, replyingTo?.id, mentionedUserIds);
-      
-      if (replyingTo) {
-        // Add reply under the specific parent comment
-        setComments((prev) => 
-          prev.map((comment) => {
-            if (String(comment.id) === String(replyingTo.id)) {
-              return {
-                ...comment,
-                replies: [newComment, ...(comment.replies ?? [])],
-                replyCount: (comment.replyCount ?? 0) + 1,
-              };
-            }
-            // Also check nested replies recursively
-            if (comment.replies?.length) {
-              return {
-                ...comment,
-                replies: addReplyToNested(comment.replies, replyingTo.id, newComment),
-              };
-            }
-            return comment;
-          })
-        );
+      const parentId = replyingTo ? replyParentId(replyingTo, comments) : undefined;
+      const created = await eventsApi.addComment(eventId, text, parentId, mentionedUserIds);
+      // Fill in the author if the response lacks it (older backends) -- it's us.
+      const newComment: Comment = {
+        ...created,
+        replies: created.replies ?? [],
+        commenter: created.commenter ?? (myId != null ? { userId: myId, name: myName ?? 'You' } : undefined),
+        authorId: created.authorId ?? (myId as string | number),
+      };
+
+      if (parentId != null) {
+        const root = rootIdOf(comments, parentId);
+        setComments((prev) => addReply(prev, parentId, newComment));
+        if (root != null) setExpandedIds((prev) => new Set(prev).add(String(root)));
       } else {
-        // Top-level comment - add to beginning
         setComments((prev) => [newComment, ...prev]);
       }
-      
+
       setInput('');
       setReplyingTo(null);
-      onCommentAdded();
-      queryClient.invalidateQueries({ queryKey: ['events-feed'] });
-      queryClient.invalidateQueries({ queryKey: ['event', eventId] });
-      // Focus back to input for continued typing
+      setPickedMentions([]);
+      onCommentCountChange(1);
       inputRef.current?.focus();
+    } catch (e) {
+      // Used to be try/finally only: a failed send (e.g. the backend's
+      // reply-depth cap) silently did nothing.
+      appAlert(replyingTo ? "Couldn't post reply" : "Couldn't post comment", getErrorMessage(e));
     } finally {
       setSending(false);
     }
-  };
-
-  // Helper to recursively find and add reply to nested comment
-  const addReplyToNested = (replies: Comment[], parentId: string | number, newReply: Comment): Comment[] => {
-    return replies.map((reply) => {
-      if (String(reply.id) === String(parentId)) {
-        return {
-          ...reply,
-          replies: [newReply, ...(reply.replies ?? [])],
-          replyCount: (reply.replyCount ?? 0) + 1,
-        };
-      }
-      if (reply.replies?.length) {
-        return {
-          ...reply,
-          replies: addReplyToNested(reply.replies, parentId, newReply),
-        };
-      }
-      return reply;
-    });
   };
 
   const handleLikeComment = async (comment: Comment) => {
     const nextLiked = !comment.likedByMe;
     const nextCount = comment.likedByMe ? (comment.likeCount ?? 1) - 1 : (comment.likeCount ?? 0) + 1;
     setComments((prev) =>
-      prev.map((c) =>
-        c.id === comment.id ? { ...c, likedByMe: nextLiked, likeCount: Math.max(0, nextCount) } : c
-      )
+      updateInTree(prev, comment.id, (c) => ({ ...c, likedByMe: nextLiked, likeCount: Math.max(0, nextCount) })),
     );
     try {
       if (nextLiked) {
@@ -624,9 +703,7 @@ function CommentBottomSheet({
       }
     } catch {
       setComments((prev) =>
-        prev.map((c) =>
-          c.id === comment.id ? { ...c, likedByMe: comment.likedByMe, likeCount: comment.likeCount } : c
-        )
+        updateInTree(prev, comment.id, (c) => ({ ...c, likedByMe: comment.likedByMe, likeCount: comment.likeCount })),
       );
     }
   };
@@ -635,6 +712,20 @@ const getAuthorName = (comment: Comment) => comment.authorName ?? comment.commen
 
   const footer = (
       <View style={styles.footerWrap}>
+        {editingComment && (
+          <View style={styles.replyIndicatorInner}>
+            <Text style={styles.replyIndicatorText}>Editing your comment</Text>
+            <Pressable
+              onPress={() => {
+                setEditingComment(null);
+                setInput('');
+              }}
+              hitSlop={8}
+            >
+              <Ionicons name="close" size={14} color={colors.textMuted} />
+            </Pressable>
+          </View>
+        )}
         {replyingTo && (
           <View style={styles.replyIndicatorInner}>
             <Text style={styles.replyIndicatorText}>Replying to <Text style={styles.replyToName}>{getAuthorName(replyingTo)}</Text></Text>
@@ -659,7 +750,7 @@ const getAuthorName = (comment: Comment) => comment.authorName ?? comment.commen
               onFocus={() => setShowMentions(true)}
               onBlur={() => setTimeout(() => setShowMentions(false), 200)}
             />
-            {showMentions && input.startsWith('@') && mentions.length > 0 && (
+            {showMentions && activeMentionQuery != null && mentions.length > 0 && (
               <View style={styles.mentionsList}>
                 {mentions.slice(0, 5).map((user) => (
                   <Pressable
@@ -694,8 +785,48 @@ const getAuthorName = (comment: Comment) => comment.authorName ?? comment.commen
     );
 
   const handleReply = (comment: Comment) => {
+    setEditingComment(null);
     setReplyingTo(comment);
     inputRef.current?.focus();
+  };
+
+  const handleOwnMenu = (comment: Comment) => {
+    appAlert('Your comment', undefined, [
+      {
+        text: 'Edit',
+        onPress: () => {
+          setReplyingTo(null);
+          setEditingComment(comment);
+          setInput(comment.body);
+          setTimeout(() => inputRef.current?.focus(), 50);
+        },
+      },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () =>
+          appAlert('Delete comment?', 'This removes the comment and its replies.', [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Delete',
+              style: 'destructive',
+              onPress: async () => {
+                try {
+                  await commentsApi.remove(comment.id);
+                  setComments((prev) => removeFromTree(prev, comment.id));
+                  // The comment and every reply under it are gone. (This
+                  // used to call the "comment added" handler, so deleting
+                  // raised the count.)
+                  onCommentCountChange(-(1 + countDescendants(comment)));
+                } catch (e) {
+                  appAlert("Couldn't delete comment", getErrorMessage(e));
+                }
+              },
+            },
+          ]),
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   };
 
   return (
@@ -731,8 +862,19 @@ const getAuthorName = (comment: Comment) => comment.authorName ?? comment.commen
                   key={String(comment.id)}
                   comment={comment}
                   myId={myId}
+                  expanded={expandedIds.has(String(comment.id))}
+                  onToggleReplies={() =>
+                    setExpandedIds((prev) => {
+                      const next = new Set(prev);
+                      const key = String(comment.id);
+                      if (next.has(key)) next.delete(key);
+                      else next.add(key);
+                      return next;
+                    })
+                  }
                   onLike={handleLikeComment}
                   onReply={handleReply}
+                  onOwnMenu={handleOwnMenu}
                 />
               ))}
             </ScrollView>
@@ -751,236 +893,250 @@ const getAuthorName = (comment: Comment) => comment.authorName ?? comment.commen
   );
 }
 
-/* Comment Item Component */
-function CommentItem({
-  comment,
-  myId,
-  onLike,
-  onReply,
-}: {
-  comment: Comment;
+/* Comment thread rendering.
+ *
+ * Replies show as ONE indented list under their top-level comment, in
+ * thread order, each labelled with who it answers ("↳ Asha") when that
+ * isn't the top-level comment. The backend nests replies up to 8 deep;
+ * rendering that nesting literally (as this used to, adding the indent
+ * twice per level) squeezed replies-to-replies into a sliver at the right
+ * edge. Flattening keeps every reply readable at the same width.
+ */
+
+const MAX_COMMENT_DEPTH = 8; // backend comment.MaxCommentDepth
+
+const commentAuthorName = (c: Comment) => c.authorName ?? c.commenter?.name ?? 'Unknown';
+
+type FlatReply = { reply: Comment; replyToName?: string };
+
+/** Every descendant of a top-level comment, depth-first in thread order. */
+function flattenReplies(top: Comment): FlatReply[] {
+  const out: FlatReply[] = [];
+  const walk = (parent: Comment, isTop: boolean) => {
+    for (const r of parent.replies ?? []) {
+      out.push({ reply: r, replyToName: isTop ? undefined : commentAuthorName(parent) });
+      walk(r, false);
+    }
+  };
+  walk(top, true);
+  return out;
+}
+
+function countDescendants(c: Comment): number {
+  return (c.replies ?? []).reduce((n, r) => n + 1 + countDescendants(r), 0);
+}
+
+function findPath(list: Comment[], id: string | number, path: Comment[] = []): Comment[] | null {
+  for (const c of list) {
+    const here = [...path, c];
+    if (String(c.id) === String(id)) return here;
+    const deeper = findPath(c.replies ?? [], id, here);
+    if (deeper) return deeper;
+  }
+  return null;
+}
+
+/** Which comment a reply attaches to: normally the one tapped; at the
+ *  backend's depth cap, its parent instead (same thread, still labelled)
+ *  rather than failing with "maximum reply depth". */
+function replyParentId(target: Comment, tree: Comment[]): string | number {
+  const path = findPath(tree, target.id);
+  const depth = target.depth ?? (path ? path.length - 1 : 0);
+  if (depth >= MAX_COMMENT_DEPTH && path && path.length >= 2) {
+    return path[path.length - 2].id;
+  }
+  return target.id;
+}
+
+/** Top-level ancestor id of a comment. */
+function rootIdOf(tree: Comment[], id: string | number): string | number | null {
+  const path = findPath(tree, id);
+  return path ? path[0].id : null;
+}
+
+/** Appends a reply under its parent (oldest-first, like the server). */
+function addReply(list: Comment[], parentId: string | number, reply: Comment): Comment[] {
+  return list.map((c) => {
+    if (String(c.id) === String(parentId)) {
+      return { ...c, replies: [...(c.replies ?? []), reply], replyCount: (c.replyCount ?? 0) + 1 };
+    }
+    return c.replies?.length ? { ...c, replies: addReply(c.replies, parentId, reply) } : c;
+  });
+}
+
+function CommentBody({ body, mentions }: { body: string; mentions?: Comment['mentions'] }) {
+  if (!mentions?.length) return <Text style={styles.commentBody}>{body}</Text>;
+
+  // Find every mention first, then emit text in order. The old loop walked
+  // mentions longest-name-first with one moving cursor, so it skipped any
+  // mention appearing earlier in the text than a longer one.
+  const hits: Array<{ start: number; end: number; userId?: string | number; text: string }> = [];
+  for (const m of mentions) {
+    const text = `@${m.name}`;
+    let from = 0;
+    for (;;) {
+      const at = body.indexOf(text, from);
+      if (at === -1) break;
+      if (!hits.some((h) => at < h.end && at + text.length > h.start)) {
+        hits.push({ start: at, end: at + text.length, userId: m.userId, text });
+      }
+      from = at + text.length;
+    }
+  }
+  hits.sort((a, b) => a.start - b.start);
+
+  const segments: React.ReactNode[] = [];
+  let cursor = 0;
+  hits.forEach((h, i) => {
+    if (h.start > cursor) segments.push(body.slice(cursor, h.start));
+    segments.push(
+      <Text
+        key={`m-${i}`}
+        style={styles.mentionLink}
+        onPress={() => {
+          if (h.userId != null) router.push(`/public-profile/${h.userId}` as Href);
+        }}
+      >
+        {h.text}
+      </Text>,
+    );
+    cursor = h.end;
+  });
+  if (cursor < body.length) segments.push(body.slice(cursor));
+  return <Text style={styles.commentBody}>{segments}</Text>;
+}
+
+type CommentHandlers = {
   myId?: string | number;
   onLike: (comment: Comment) => void;
   onReply: (comment: Comment) => void;
-}) {
-  const isOwn = myId != null && String(comment.authorId ?? comment.commenter?.userId) === String(myId);
-  const authorDisplayName = comment.authorName ?? comment.commenter?.name ?? 'Unknown';
-  const [showReplies, setShowReplies] = useState(false);
+  onOwnMenu: (comment: Comment) => void;
+};
 
-  // Render comment body with mention links
-  const renderCommentBody = (body: string, mentions?: Comment['mentions']) => {
-    if (!mentions?.length) return <Text style={styles.commentBody}>{body}</Text>;
+const isOwnComment = (c: Comment, myId?: string | number) =>
+  myId != null && String(c.authorId ?? c.commenter?.userId) === String(myId);
 
-    const segments: React.ReactNode[] = [];
-    let lastIndex = 0;
-    const sortedMentions = [...mentions].sort((a, b) => (b.name?.length ?? 0) - (a.name?.length ?? 0));
-
-    for (const mention of sortedMentions) {
-      const mentionText = `@${mention.name}`;
-      const index = body.indexOf(mentionText, lastIndex);
-      if (index === -1) continue;
-
-      if (index > lastIndex) {
-        segments.push(<Text key={`text-${lastIndex}`} style={styles.commentBody}>{body.slice(lastIndex, index)}</Text>);
-      }
-      segments.push(
-        <Text
-          key={`mention-${mention.userId}`}
-          style={styles.mentionLink}
-          onPress={() => {
-            if (mention.userId) {
-              router.push(`/public-profile/${mention.userId}` as any);
-            }
-          }}
+function CommentActions({
+  comment,
+  small,
+  myId,
+  onLike,
+  onReply,
+  onOwnMenu,
+  trailing,
+}: CommentHandlers & { comment: Comment; small?: boolean; trailing?: React.ReactNode }) {
+  return (
+    <View style={styles.commentActions}>
+      <Pressable onPress={() => onLike(comment)} style={styles.actionText} hitSlop={6}>
+        <Ionicons
+          name={comment.likedByMe ? 'heart' : 'heart-outline'}
+          size={small ? 14 : 16}
+          color={comment.likedByMe ? colors.danger : colors.textMuted}
+        />
+        {(comment.likeCount ?? 0) > 0 && (
+          <Text style={[styles.actionCountSmall, comment.likedByMe && { color: colors.danger }]}>
+            {comment.likeCount}
+          </Text>
+        )}
+      </Pressable>
+      <Pressable onPress={() => onReply(comment)} style={styles.actionText} hitSlop={6}>
+        <Text style={styles.actionLabel}>Reply</Text>
+      </Pressable>
+      {isOwnComment(comment, myId) ? (
+        <Pressable
+          onPress={() => onOwnMenu(comment)}
+          style={styles.actionText}
+          hitSlop={8}
+          accessibilityLabel="Edit or delete comment"
         >
-          {mentionText}
-        </Text>
-      );
-      lastIndex = index + mentionText.length;
-    }
+          <Ionicons name="ellipsis-horizontal" size={small ? 14 : 16} color={colors.textMuted} />
+        </Pressable>
+      ) : null}
+      {trailing}
+    </View>
+  );
+}
 
-    if (lastIndex < body.length) {
-      segments.push(<Text key={`text-${lastIndex}`} style={styles.commentBody}>{body.slice(lastIndex)}</Text>);
-    }
+function CommentHeader({ comment, small, myId }: { comment: Comment; small?: boolean; myId?: string | number }) {
+  return (
+    <View style={styles.commentHeader}>
+      <Text style={[small ? styles.replyAuthor : styles.commentAuthor, styles.commentAuthorShrink]} numberOfLines={1}>
+        {commentAuthorName(comment)}
+      </Text>
+      <Text style={small ? styles.replyTime : styles.commentTime}>{formatRelativeTime(comment.createdAt)}</Text>
+      {isOwnComment(comment, myId) && <Text style={styles.youTag}>You</Text>}
+    </View>
+  );
+}
 
-    return <Text style={styles.commentBody}>{segments}</Text>;
-  };
-
-  // Render replies for this comment (direct replies only)
-  const renderReplies = (replies: Comment[] | undefined, level: number) => {
-    if (!replies?.length) return null;
-    return (
-      <View style={[styles.repliesContainer, { marginLeft: level * 12 }]}>
-        {replies.map((reply) => (
-          <ReplyItem
-            key={String(reply.id)}
-            reply={reply}
-            myId={myId}
-            onLike={onLike}
-            onReply={onReply}
-            level={level + 1}
-          />
-        ))}
-      </View>
-    );
-  };
+/* One top-level comment plus (when expanded) its whole reply thread. */
+function CommentItem({
+  comment,
+  expanded,
+  onToggleReplies,
+  ...handlers
+}: CommentHandlers & { comment: Comment; expanded: boolean; onToggleReplies: () => void }) {
+  const thread = flattenReplies(comment);
+  const total = thread.length;
 
   return (
     <View style={styles.commentRow}>
-      <Avatar name={authorDisplayName} size={32} />
+      <Avatar name={commentAuthorName(comment)} size={32} />
       <View style={styles.commentContent}>
-        <View style={styles.commentHeader}>
-          <Text style={styles.commentAuthor}>{authorDisplayName}</Text>
-          <Text style={styles.commentTime}>{formatRelativeTime(comment.createdAt)}</Text>
-          {isOwn && <Text style={styles.youTag}>You</Text>}
-        </View>
-        {renderCommentBody(comment.body, comment.mentions)}
-        <View style={styles.commentActions}>
-          <Pressable onPress={() => onLike(comment)} style={styles.actionText}>
-            <Ionicons
-              name={comment.likedByMe ? 'heart' : 'heart-outline'}
-              size={16}
-              color={comment.likedByMe ? colors.danger : colors.textMuted}
-            />
-            {(comment.likeCount ?? 0) > 0 && (
-              <Text style={[styles.actionCountSmall, comment.likedByMe && { color: colors.danger }]}>
-                {comment.likeCount}
-              </Text>
-            )}
-          </Pressable>
-          <Pressable onPress={() => onReply(comment)} style={styles.actionText}>
-            <Text style={styles.actionLabel}>Reply</Text>
-          </Pressable>
-          {(comment.replyCount ?? 0) > 0 && (
-            <Pressable onPress={() => setShowReplies(!showReplies)} style={styles.actionText}>
-              <Text style={styles.actionLabel}>
-                {showReplies ? `Hide ${comment.replyCount} repl${comment.replyCount === 1 ? 'y' : 'ies'}` : `View ${comment.replyCount} repl${comment.replyCount === 1 ? 'y' : 'ies'}`}
-              </Text>
-            </Pressable>
-          )}
-        </View>
-        {showReplies && renderReplies(comment.replies, 1)}
+        <CommentHeader comment={comment} myId={handlers.myId} />
+        <CommentBody body={comment.body} mentions={comment.mentions} />
+        <CommentActions
+          comment={comment}
+          {...handlers}
+          trailing={
+            total > 0 ? (
+              <Pressable onPress={onToggleReplies} style={styles.actionText} hitSlop={6}>
+                <Text style={styles.actionLabel}>
+                  {expanded ? 'Hide' : 'View'} {total} repl{total === 1 ? 'y' : 'ies'}
+                </Text>
+              </Pressable>
+            ) : null
+          }
+        />
+        {expanded && total > 0 ? (
+          <View style={styles.repliesContainer}>
+            {thread.map(({ reply, replyToName }) => (
+              <ReplyItem key={String(reply.id)} reply={reply} replyToName={replyToName} {...handlers} />
+            ))}
+          </View>
+        ) : null}
       </View>
     </View>
   );
 }
 
-/* Reply Item Component - for nested replies (LinkedIn style) */
-function ReplyItem({
-  reply,
-  myId,
-  onLike,
-  onReply,
-  level = 1,
-}: {
-  reply: Comment;
-  myId?: string | number;
-  onLike: (comment: Comment) => void;
-  onReply: (comment: Comment) => void;
-  level: number;
-}) {
-  const isOwn = myId != null && String(reply.authorId ?? reply.commenter?.userId) === String(myId);
-  const authorDisplayName = reply.authorName ?? reply.commenter?.name ?? 'Unknown';
-  const [showReplies, setShowReplies] = useState(false);
-
-  const renderCommentBody = (body: string, mentions?: Comment['mentions']) => {
-    if (!mentions?.length) return <Text style={styles.commentBody}>{body}</Text>;
-
-    const segments: React.ReactNode[] = [];
-    let lastIndex = 0;
-    const sortedMentions = [...mentions].sort((a, b) => (b.name?.length ?? 0) - (a.name?.length ?? 0));
-
-    for (const mention of sortedMentions) {
-      const mentionText = `@${mention.name}`;
-      const index = body.indexOf(mentionText, lastIndex);
-      if (index === -1) continue;
-
-      if (index > lastIndex) {
-        segments.push(<Text key={`text-${lastIndex}`} style={styles.commentBody}>{body.slice(lastIndex, index)}</Text>);
-      }
-      segments.push(
-        <Text
-          key={`mention-${mention.userId}`}
-          style={styles.mentionLink}
-          onPress={() => {
-            if (mention.userId) {
-              router.push(`/public-profile/${mention.userId}` as any);
-            }
-          }}
-        >
-          {mentionText}
-        </Text>
-      );
-      lastIndex = index + mentionText.length;
-    }
-
-    if (lastIndex < body.length) {
-      segments.push(<Text key={`text-${lastIndex}`} style={styles.commentBody}>{body.slice(lastIndex)}</Text>);
-    }
-
-    return <Text style={styles.commentBody}>{segments}</Text>;
-  };
-
-  const renderReplies = (replies: Comment[] | undefined, currentLevel: number) => {
-    if (!replies?.length) return null;
-    return (
-      <View style={[styles.repliesContainer, { marginLeft: currentLevel * 12 }]}>
-        {replies.map((r) => (
-          <ReplyItem
-            key={String(r.id)}
-            reply={r}
-            myId={myId}
-            onLike={onLike}
-            onReply={onReply}
-            level={currentLevel + 1}
-          />
-        ))}
-      </View>
-    );
-  };
-
+/* A reply, at one fixed indent whatever its depth. */
+function ReplyItem({ reply, replyToName, ...handlers }: CommentHandlers & { reply: Comment; replyToName?: string }) {
   return (
-    <View style={[styles.replyRow, { marginLeft: level * 12 }]}>
-      <View style={styles.replyConnector} />
-      <View style={styles.replyContent}>
-        <Avatar name={authorDisplayName} size={28} />
-        <View style={styles.replyInner}>
-          <View style={styles.replyHeader}>
-            <Text style={styles.replyAuthor}>{authorDisplayName}</Text>
-            <Text style={styles.replyTime}>{formatRelativeTime(reply.createdAt)}</Text>
-            {isOwn && <Text style={styles.youTag}>You</Text>}
-          </View>
-          {renderCommentBody(reply.body, reply.mentions)}
-          <View style={styles.replyActions}>
-            <Pressable onPress={() => onLike(reply)} style={styles.actionText}>
-              <Ionicons
-                name={reply.likedByMe ? 'heart' : 'heart-outline'}
-                size={14}
-                color={reply.likedByMe ? colors.danger : colors.textMuted}
-              />
-              {(reply.likeCount ?? 0) > 0 && (
-                <Text style={[styles.actionCountSmall, reply.likedByMe && { color: colors.danger }]}>
-                  {reply.likeCount}
-                </Text>
-              )}
-            </Pressable>
-            <Pressable onPress={() => onReply(reply)} style={styles.actionText}>
-              <Text style={styles.actionLabel}>Reply</Text>
-            </Pressable>
-            {(reply.replyCount ?? 0) > 0 && (
-              <Pressable onPress={() => setShowReplies(!showReplies)} style={styles.actionText}>
-                <Text style={styles.actionLabel}>
-                  {showReplies ? `Hide ${reply.replyCount} repl${reply.replyCount === 1 ? 'y' : 'ies'}` : `View ${reply.replyCount} repl${reply.replyCount === 1 ? 'y' : 'ies'}`}
-                </Text>
-              </Pressable>
-            )}
-          </View>
-          {showReplies && renderReplies(reply.replies, level + 1)}
-        </View>
+    <View style={styles.replyRow}>
+      <Avatar name={commentAuthorName(reply)} size={26} />
+      <View style={styles.replyInner}>
+        <CommentHeader comment={reply} small myId={handlers.myId} />
+        {replyToName ? (
+          <Text style={styles.replyToLabel} numberOfLines={1}>
+            ↳ {replyToName}
+          </Text>
+        ) : null}
+        <CommentBody body={reply.body} mentions={reply.mentions} />
+        <CommentActions comment={reply} small {...handlers} />
       </View>
     </View>
-);
-  }
+  );
+}
+
+/* A video attachment, played inside the app (see VideoPlayer). It used to
+ * hand the URL to Linking.openURL, which opened the browser. */
+export function VideoTile({ url, rounded }: { url: string; rounded?: boolean }) {
+  return <VideoPlayer url={url} style={[styles.videoTile, rounded && { borderRadius: radius.md }]} />;
+}
+
+/** Liked-heart colour (the stats bubble uses it too). */
+const LIKE_RED = '#E0245E';
 
 const styles = StyleSheet.create({
   card: {
@@ -1113,7 +1269,7 @@ const styles = StyleSheet.create({
     width: 16,
     height: 16,
     borderRadius: 8,
-    backgroundColor: colors.primary,
+    backgroundColor: LIKE_RED,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1147,6 +1303,9 @@ const styles = StyleSheet.create({
   },
   postActionLabelActive: {
     color: colors.primary,
+  },
+  postActionLabelLiked: {
+    color: LIKE_RED,
   },
   // Comment Sheet Styles (used by BottomSheet footer/content)
   loadingWrap: {
@@ -1244,10 +1403,26 @@ const styles = StyleSheet.create({
   },
   repliesContainer: {
     marginTop: spacing.sm,
+    paddingLeft: spacing.sm,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.border,
   },
   replyRow: {
     flexDirection: 'row',
+    gap: spacing.xs,
     marginBottom: spacing.sm,
+  },
+  commentAuthorShrink: {
+    flexShrink: 1,
+  },
+  replyToLabel: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: typography.size.xs,
+    color: colors.textMuted,
+    marginBottom: 2,
+  },
+  videoTile: {
+    marginTop: 10,
   },
   replyConnector: {
     width: 2,

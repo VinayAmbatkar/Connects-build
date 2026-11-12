@@ -5,9 +5,7 @@ export const portfolioApi = {
     apiClient.get(`/portfolio/${userId}/photos`).then((r) => r.data),
   upload: (formData: FormData) =>
     apiClient
-      .post('/portfolio/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+      .post('/portfolio/upload', formData)
       .then((r) => r.data),
   remove: (photoId: string | number) =>
     apiClient.delete(`/portfolio/photos/${photoId}`).then((r) => r.data),

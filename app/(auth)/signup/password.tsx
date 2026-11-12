@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Dimensions,
   Image,
   Keyboard,
@@ -18,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SignupAccountFooter } from '@/src/components/SignupAccountFooter';
+import { BrandTaglineFooter } from '@/src/components/BrandTaglineFooter';
 import { StepProgress } from '@/src/components/StepProgress';
 import { TextField } from '@/src/components/TextField';
 import { BrandHeader } from '@/src/features/onboarding/BrandHeader';
@@ -27,6 +27,7 @@ import { useAuthActions } from '@/src/hooks/useAuthActions';
 import { useSignupStore } from '@/src/store/signupStore';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
+import { appAlert } from '@/src/components/AppDialog';
 const signupHero = require('../../../assets/images/Onboarding/loginimg-bg.webp');
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BRAND = '#F57D01';
@@ -95,11 +96,11 @@ export default function SignupPasswordScreen() {
 
   const createAccountAndContinue = async () => {
     if (!allValid) {
-      Alert.alert('Password', 'Please meet all password requirements and confirm it.');
+      appAlert('Password', 'Please meet all password requirements and confirm it.');
       return;
     }
     if (!draft.fullName.trim() || !draft.email.trim() || !draft.role) {
-      Alert.alert('Missing info', 'Please complete profile and role steps first.');
+      appAlert('Missing info', 'Please complete profile and role steps first.');
       return;
     }
     setLoading(true);
@@ -115,7 +116,7 @@ export default function SignupPasswordScreen() {
       await persistSession(data);
       router.push('/(auth)/signup/otp');
     } catch (error) {
-      Alert.alert('Signup failed', getErrorMessage(error));
+      appAlert('Signup failed', getErrorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -239,38 +240,41 @@ export default function SignupPasswordScreen() {
               }
             />
 
-            <View style={styles.footer}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Go back"
-                onPress={() => router.back()}
-                style={({ pressed }) => [styles.backCircle, pressed && styles.pressed]}
-              >
-                <Ionicons name="chevron-back" size={24} color={BRAND} />
-              </Pressable>
+            <View style={styles.bottomGroup}>
+              <View style={styles.footer}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Go back"
+                  onPress={() => router.back()}
+                  style={({ pressed }) => [styles.backCircle, pressed && styles.pressed]}
+                >
+                  <Ionicons name="chevron-back" size={24} color={BRAND} />
+                </Pressable>
 
-              <Pressable
-                accessibilityRole="button"
-                onPress={createAccountAndContinue}
-                disabled={loading}
-                style={({ pressed }) => [
-                  styles.submitBtn,
-                  pressed && styles.pressed,
-                  loading && styles.submitDisabled,
-                ]}
-              >
-                {loading ? (
-                  <ActivityIndicator color={colors.white} />
-                ) : (
-                  <>
-                    <Text style={styles.submitText}>Create Account</Text>
-                    <Ionicons name="arrow-forward" size={18} color={colors.white} />
-                  </>
-                )}
-              </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={createAccountAndContinue}
+                  disabled={loading}
+                  style={({ pressed }) => [
+                    styles.submitBtn,
+                    pressed && styles.pressed,
+                    loading && styles.submitDisabled,
+                  ]}
+                >
+                  {loading ? (
+                    <ActivityIndicator color={colors.white} />
+                  ) : (
+                    <>
+                      <Text style={styles.submitText}>Create Account</Text>
+                      <Ionicons name="arrow-forward" size={18} color={colors.white} />
+                    </>
+                  )}
+                </Pressable>
+              </View>
+
+              <SignupAccountFooter />
+              <BrandTaglineFooter />
             </View>
-
-            <SignupAccountFooter />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -341,6 +345,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   body: {
+    flexGrow: 1,
     paddingHorizontal: spacing.lg,
     marginTop: spacing.sm,
   },
@@ -412,6 +417,10 @@ const styles = StyleSheet.create({
   ruleTextOk: {
     color: colors.text,
     fontFamily: typography.fontFamily.medium,
+  },
+  bottomGroup: {
+    marginTop: 'auto',
+    gap: spacing.md,
   },
   footer: {
     marginTop: spacing.md,

@@ -1,13 +1,16 @@
+import { alertApiError } from '@/src/features/billing/featureLocked';
 import { useState } from 'react';
-import { Alert, FlatList, StyleSheet, Text, View } from 'react-native';
+import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/src/components/Button';
-import { EmptyState, LoadingState } from '@/src/components/EmptyState';
+import { EmptyState } from '@/src/components/EmptyState';
 import { TextField } from '@/src/components/TextField';
 import { getErrorMessage } from '@/src/api/client';
 import { projectsApi } from '@/src/api/projects';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
+import { appAlert } from '@/src/components/AppDialog';
+import { ListSkeleton } from '@/src/components/Skeleton';
 export default function ProjectsScreen() {
   const [name, setName] = useState('');
   const [locationId, setLocationId] = useState('');
@@ -32,10 +35,10 @@ export default function ProjectsScreen() {
       setSizeSqft('');
       void queryClient.invalidateQueries({ queryKey: ['projects'] });
     },
-    onError: (error) => Alert.alert('Error', getErrorMessage(error)),
+    onError: (error) => alertApiError(error),
   });
 
-  if (listQuery.isLoading) return <LoadingState />;
+  if (listQuery.isLoading) return <ListSkeleton />;
   const data = Array.isArray(listQuery.data) ? listQuery.data : [];
 
   return (
@@ -55,7 +58,7 @@ export default function ProjectsScreen() {
           loading={createMutation.isPending}
           onPress={() => {
             if (!name.trim()) {
-              Alert.alert('Name required');
+              appAlert('Name required');
               return;
             }
             createMutation.mutate();

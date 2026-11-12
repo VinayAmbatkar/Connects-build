@@ -1,11 +1,14 @@
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { alertApiError } from '@/src/features/billing/featureLocked';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { LoadingState } from '@/src/components/EmptyState';
+
 import { accountApi } from '@/src/api/account';
 import { getErrorMessage } from '@/src/api/client';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
+import { appAlert } from '@/src/components/AppDialog';
+import { DetailSkeleton } from '@/src/components/Skeleton';
 const STARTUP_OPTIONS = [
   { value: 'DASHBOARD', label: 'Home feed' },
   { value: 'SEARCH', label: 'Discover' },
@@ -31,12 +34,12 @@ export function SettingsGeneralScreen() {
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['general'] });
-      Alert.alert('Saved', 'Your experience preferences were updated.');
+      appAlert('Saved', 'Your experience preferences were updated.');
     },
-    onError: (error) => Alert.alert('Error', getErrorMessage(error)),
+    onError: (error) => alertApiError(error),
   });
 
-  if (generalQuery.isLoading) return <LoadingState />;
+  if (generalQuery.isLoading) return <DetailSkeleton />;
 
   const current = String(
     (generalQuery.data as { startupPage?: string } | undefined)?.startupPage ??

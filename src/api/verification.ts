@@ -95,6 +95,29 @@ export const verificationApi = {
     return apiClient.post<{ status: string }>('/profile/verification/employee', form).then((r) => r.data);
   },
 
+  // Individual Consultant: licence + proof of consultancy (PDFs), reviewed
+  // by an admin. Requires approved Aadhaar and employmentType
+  // INDIVIDUAL_CONSULTANT saved on the profile.
+  submitIndividualConsultant: (
+    legalName: string,
+    licenseNumber: string,
+    documents: { uri: string; name: string; type: string }[],
+    licensingAuthority?: string,
+    certifications?: string
+  ) => {
+    const form = new FormData();
+    form.append('legalName', legalName);
+    form.append('licenseNumber', licenseNumber);
+    if (licensingAuthority) form.append('licensingAuthority', licensingAuthority);
+    if (certifications) form.append('certifications', certifications);
+    documents.forEach((doc) => form.append('documents', doc as any));
+    return apiClient
+      .post<{ status: string }>('/profile/verification/individual', form, {
+        timeout: 60000,
+      })
+      .then((r) => r.data);
+  },
+
   // TrueID GST Simple verification
   submitGSTVerification: (gstNumber: string, legalBusinessName: string) =>
     apiClient

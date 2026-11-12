@@ -1,6 +1,7 @@
 import { type ComponentProps, type ReactNode, type Ref, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
 import { colors, spacing, typography } from '@/src/theme/tokens';
 import {
   AttemptNotice,
@@ -15,8 +16,8 @@ import {
 } from '@/src/features/verification/components/kycUi';
 import { OtpCodeInput } from '@/src/features/verification/components/OtpCodeInput';
 import { NameMatchGuideSheet } from '@/src/features/verification/components/NameMatchGuideSheet';
-import type { GstKyc, WorkEmailKyc } from '@/src/features/verification/useKycVerification';
-import { GSTIN_LENGTH, formatRetryAfter } from '@/src/features/verification/kycLogic';
+import type { ConsultantKyc, GstKyc, WorkEmailKyc } from '@/src/features/verification/useKycVerification';
+import { GSTIN_LENGTH, MAX_VERIFICATION_DOCUMENTS, formatRetryAfter } from '@/src/features/verification/kycLogic';
 import type { GSTVerificationResult } from '@/src/types/api';
 
 function Field({
@@ -269,6 +270,158 @@ export function WorkEmailStep({ email }: { email: WorkEmailKyc }) {
   );
 }
 
+// ── Licence review (Individual Consultants) ────────────────────────────
+
+async function pickPdfs(consultant: ConsultantKyc) {
+  const result = await DocumentPicker.getDocumentAsync({
+    type: 'application/pdf',
+    multiple: true,
+    copyToCacheDirectory: true,
+  });
+  if (result.canceled) return;
+  consultant.addDocuments(
+    result.assets.map((a) => ({
+      uri: a.uri,
+      name: a.name || 'document.pdf',
+      type: a.mimeType || 'application/pdf',
+      size: a.size,
+      file: a.file,
+    })),
+  );
+}
+
+export function ConsultantStep({ consultant }: { consultant: ConsultantKyc }) {
+  const { review, record } = consultant;
+
+  if (review === 'APPROVED') {
+    return (
+      <KycCard
+        testID="consultant-approved"
+        icon="ribbon"
+        title="Licence verified"
+        subtitle="Approved by the COBILDS verification team."
+        badge={<StatusPill label="Verified" />}
+      >
+        <DetailRow label="Legal name" value={record?.legalName} verified />
+        <DetailRow label="Licensing body" value={record?.licensingAuthority} />
+        <DetailRow label="Licence no." value={record?.maskedLicenseNumber} />
+      </KycCard>
+    );
+  }
+
+  if (review === 'PENDING') {
+    return (
+      <KycCard
+        testID="consultant-pending"
+        icon="document-text-outline"
+        title="Licence under review"
+        subtitle="Our team is reviewing your licence. We'll notify you as soon as it's done."
+        badge={<StatusPill label="In review" tone="pending" />}
+      >
+        <DetailRow label="Legal name" value={record?.legalName} />
+        <DetailRow label="Licensing body" value={record?.licensingAuthority} />
+        <DetailRow label="Licence no." value={record?.maskedLicenseNumber} />
+      </KycCard>
+    );
+  }
+
+  return (
+    <KycCard
+      testID="consultant-step"
+      icon="document-text-outline"
+      title="Verify your professional licence"
+      subtitle="As an Individual Consultant, upload your licence or registration and proof of your consultancy practice. Our team reviews it manually."
+    >
+      <View style={fieldStyles.gap}>
+        {review === 'REJECTED' ? (
+          <Banner
+            tone="error"
+            testID="consultant-rejected"
+            message={`Your last submission was not approved${record?.rejectionReason ? `: ${record.rejectionReason}` : '.'} Please correct it and submit again.`}
+          />
+        ) : null}
+        <Field
+          testID="consultant-legal-name"
+          label="Full legal name"
+          value={consultant.legalName}
+          onChangeText={consultant.setLegalName}
+          placeholder="As on your licence"
+          autoCorrect={false}
+        />
+        <Field
+          testID="consultant-authority"
+          label="Licensing body (optional)"
+          value={consultant.licensingAuthority}
+          onChangeText={consultant.setLicensingAuthority}
+          placeholder="e.g. Council of Architecture"
+        />
+        <Field
+          testID="consultant-licence"
+          label="Licence / registration number"
+          value={consultant.licenseNumber}
+          onChangeText={consultant.setLicenseNumber}
+          placeholder="e.g. CA/2015/12345"
+          autoCapitalize="characters"
+          autoCorrect={false}
+        />
+        <Field
+          testID="consultant-certifications"
+          label="Other certifications (optional)"
+          value={consultant.certifications}
+          onChangeText={consultant.setCertifications}
+          placeholder="e.g. LEED AP, PMP"
+        />
+
+        <View>
+          <FieldLabel>Documents</FieldLabel>
+          <Text style={styles.codeHint}>
+            Licence certificate plus proof of consultancy (e.g. letterhead, client work order). PDF, up to{' '}
+            {MAX_VERIFICATION_DOCUMENTS} files, 10 MB each.
+          </Text>
+          {consultant.documents.map((doc) => (
+            <View key={doc.uri} style={styles.docRow}>
+              <Ionicons name="document-attach-outline" size={18} color={kyc.navy} />
+              <Text style={styles.docName} numberOfLines={1}>
+                {doc.name}
+              </Text>
+              <Pressable
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove ${doc.name}`}
+                onPress={() => consultant.removeDocument(doc.uri)}
+              >
+                <Ionicons name="close-circle" size={20} color={colors.textMuted} />
+              </Pressable>
+            </View>
+          ))}
+          {consultant.documents.length < MAX_VERIFICATION_DOCUMENTS ? (
+            <View style={styles.docAdd}>
+              <KycButton
+                testID="consultant-add-docs"
+                variant="secondary"
+                title={consultant.documents.length ? 'Add more PDFs' : 'Attach PDFs'}
+                icon="attach"
+                onPress={() => void pickPdfs(consultant)}
+              />
+            </View>
+          ) : null}
+        </View>
+
+        {consultant.error ? <Banner tone="error" message={consultant.error} testID="consultant-error" /> : null}
+
+        <KycButton
+          testID="consultant-submit"
+          title={consultant.submitting ? 'Submitting…' : 'Submit for review'}
+          icon="arrow-forward"
+          loading={consultant.submitting}
+          disabled={!consultant.canSubmit}
+          onPress={consultant.submit}
+        />
+      </View>
+    </KycCard>
+  );
+}
+
 const styles = StyleSheet.create({
   labelRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.sm },
   helpLink: { flexDirection: 'row', alignItems: 'center', gap: 3 },
@@ -289,6 +442,17 @@ const styles = StyleSheet.create({
     fontSize: typography.size.xs,
     color: kyc.navy,
   },
+  docRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: 10,
+    backgroundColor: kyc.tint,
+  },
+  docName: { flex: 1, fontFamily: typography.fontFamily.medium, fontSize: typography.size.sm, color: colors.text },
+  docAdd: { marginTop: spacing.sm },
   codeHint: {
     fontFamily: typography.fontFamily.regular,
     fontSize: typography.size.sm - 1,

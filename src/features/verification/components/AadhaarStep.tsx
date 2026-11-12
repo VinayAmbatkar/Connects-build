@@ -314,7 +314,13 @@ function VerifyingPanel() {
 
 function SuccessPanel({ flow, onContinue }: { flow: KycFlow; onContinue: () => void }) {
   const next =
-    flow === 'business' ? 'Continue to business verification' : flow === 'employee' ? 'Continue to work email' : 'Done';
+    flow === 'business'
+      ? 'Continue to business verification'
+      : flow === 'employee'
+        ? 'Continue to work email'
+        : flow === 'consultant'
+          ? 'Continue to licence verification'
+          : 'Done';
   return (
     <FadeInView style={styles.successCard}>
       <View testID="aadhaar-success-step" style={styles.successInner}>

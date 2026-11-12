@@ -6,12 +6,28 @@ import {
   Text,
   View,
 } from 'react-native';
+import { router } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/src/components/Button';
-import { EmptyState, LoadingState } from '@/src/components/EmptyState';
+import { EmptyState } from '@/src/components/EmptyState';
 import { notificationsApi } from '@/src/api/notifications';
 import { useSSE } from '@/src/hooks/useSSE';
+import { routeForNotification } from '@/src/notifications/push';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
+
+import { ListSkeleton } from '@/src/components/Skeleton';
+function formatWhen(iso: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  const minutes = Math.floor((Date.now() - date.getTime()) / 60_000);
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return date.toLocaleDateString();
+}
 
 export default function NotificationsScreen() {
   const queryClient = useQueryClient();
@@ -29,15 +45,21 @@ export default function NotificationsScreen() {
 
   const markAllMutation = useMutation({
     mutationFn: notificationsApi.markAllRead,
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      void queryClient.invalidateQueries({ queryKey: ['notifications-unread'] });
+    },
   });
 
   const markOneMutation = useMutation({
     mutationFn: notificationsApi.markRead,
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      void queryClient.invalidateQueries({ queryKey: ['notifications-unread'] });
+    },
   });
 
-  if (listQuery.isLoading) return <LoadingState />;
+  if (listQuery.isLoading) return <ListSkeleton />;
   const data = Array.isArray(listQuery.data) ? listQuery.data : [];
   const hasNotifications = data.length > 0;
 
@@ -70,11 +92,15 @@ export default function NotificationsScreen() {
         }
         renderItem={({ item }) => (
           <Pressable
-            style={[styles.card, !item.read && styles.unread]}
-            onPress={() => markOneMutation.mutate(item.id)}
+            style={[styles.card, !item.isRead && styles.unread]}
+            onPress={() => {
+              if (!item.isRead) markOneMutation.mutate(item.id);
+              const target = routeForNotification(item);
+              if (target !== '/notifications') router.push(target);
+            }}
           >
-            <Text style={styles.title}>{item.title ?? 'Notification'}</Text>
-            {item.body ? <Text style={styles.body}>{item.body}</Text> : null}
+            <Text style={styles.title}>{item.message}</Text>
+            <Text style={styles.body}>{formatWhen(item.createdAt)}</Text>
           </Pressable>
         )}
       />

@@ -114,3 +114,17 @@ export async function getPlaceDetails(placeId: string): Promise<LocationAutocomp
     })),
   };
 }
+
+/**
+ * Just a place's display name -- for showing a stored place ID as text.
+ * Requests only displayName (Google bills Place Details by the fields
+ * asked for, so this is cheaper than getPlaceDetails).
+ */
+export async function getPlaceName(placeId: string): Promise<string> {
+  const apiKey = getApiKey();
+  if (!apiKey) throw new Error('Google Maps API key not configured');
+  const response = await fetch(`${BASE_URL}/places/${encodeURIComponent(placeId)}?fields=displayName&key=${apiKey}`);
+  if (!response.ok) throw new Error(`Places name error: ${response.status}`);
+  const data = await response.json();
+  return data.displayName?.text || '';
+}

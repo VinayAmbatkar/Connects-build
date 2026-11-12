@@ -11,12 +11,12 @@ import {
 import { router, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Avatar } from '@/src/components/Avatar';
-import { EmptyState, LoadingState } from '@/src/components/EmptyState';
-import { messagesApi } from '@/src/api/messages';
+import { EmptyState } from '@/src/components/EmptyState';
+import { groupsApi, messagesApi } from '@/src/api/messages';
 import { useSSE } from '@/src/hooks/useSSE';
-import type { Conversation } from '@/src/types/api';
+import type { Conversation, GroupChat } from '@/src/types/api';
 import {
   conversationName,
   conversationPreview,
@@ -25,36 +25,87 @@ import {
 } from '@/src/features/messages/messageFormat';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
-type FilterId = 'all' | 'unread' | 'requests';
+import { appAlert } from '@/src/components/AppDialog';
+import { useFeature } from '@/src/features/billing/useFeature';
+import { PremiumBadge } from '@/src/components/PremiumBadge';
+import { ListSkeleton } from '@/src/components/Skeleton';
+type FilterId = 'all' | 'unread' | 'groups';
+
+/** A group chat shaped like a conversation row, so one list renders both. */
+function groupAsRow(g: GroupChat): Conversation {
+  return {
+    id: `group:${g.id}`,
+    kind: 'group',
+    groupId: g.id,
+    participantName: g.name,
+    lastMessage: g.lastMessagePreview,
+    lastMessageAt: g.lastMessageAt,
+    unreadCount: g.unreadCount,
+    memberCount: g.memberCount,
+  };
+}
+
+function isGroupRow(c: Conversation): boolean {
+  return c.kind === 'group';
+}
 
 export function MessagesScreen() {
   const insets = useSafeAreaInsets();
   const searchRef = useRef<TextInput>(null);
   const [filter, setFilter] = useState<FilterId>('all');
   const [query, setQuery] = useState('');
+  const queryClient = useQueryClient();
 
   const conversationsQuery = useQuery({
     queryKey: ['conversations'],
     queryFn: messagesApi.conversations,
   });
+  const groupsQuery = useQuery({
+    queryKey: ['groups'],
+    queryFn: groupsApi.list,
+  });
+  const canCreateGroup = useFeature('group_chat').enabled;
 
   useSSE({
     path: '/messages/stream',
-    onMessage: () => {
-      void conversationsQuery.refetch();
+    onMessage: (raw) => {
+      // A group message refreshes the group list; anything else the 1:1 list.
+      let isGroupMessage = false;
+      try {
+        isGroupMessage = Boolean((JSON.parse(raw) as { groupId?: number }).groupId);
+      } catch {
+        // Unparseable -- refresh both below.
+      }
+      if (isGroupMessage) void groupsQuery.refetch();
+      else void conversationsQuery.refetch();
+      void queryClient.invalidateQueries({ queryKey: ['messages-unread'] });
     },
   });
 
+  const openNewGroup = () => {
+    if (!canCreateGroup) {
+      appAlert('Premium feature', 'Group chats (up to 15 people) are included with Premium.', [
+        { text: 'Not now', style: 'cancel' },
+        { text: 'View plans', onPress: () => router.push('/premium') },
+      ]);
+      return;
+    }
+    router.push('/new-group' as Href);
+  };
+
   const conversations = useMemo(() => {
-    const list = Array.isArray(conversationsQuery.data)
-      ? conversationsQuery.data
-      : [];
-    return [...list].sort((a, b) => {
+    const list = [
+      ...(Array.isArray(conversationsQuery.data) ? conversationsQuery.data : []),
+      ...(groupsQuery.data ?? []).map(groupAsRow),
+    ];
+    return list.sort((a, b) => {
       const at = new Date(a.lastMessageAt ?? a.updatedAt ?? 0).getTime();
       const bt = new Date(b.lastMessageAt ?? b.updatedAt ?? 0).getTime();
       return bt - at;
     });
-  }, [conversationsQuery.data]);
+  }, [conversationsQuery.data, groupsQuery.data]);
+
+  const groupCount = useMemo(() => conversations.filter(isGroupRow).length, [conversations]);
 
   const unreadCount = useMemo(
     () => conversations.filter((c) => Number(c.unreadCount ?? 0) > 0).length,
@@ -65,8 +116,8 @@ export function MessagesScreen() {
     let list = conversations;
     if (filter === 'unread') {
       list = list.filter((c) => Number(c.unreadCount ?? 0) > 0);
-    } else if (filter === 'requests') {
-      list = [];
+    } else if (filter === 'groups') {
+      list = list.filter(isGroupRow);
     }
 
     const q = query.trim().toLowerCase();
@@ -82,7 +133,7 @@ export function MessagesScreen() {
   if (conversationsQuery.isLoading) {
     return (
       <View style={[styles.screen, { paddingTop: insets.top }]}>
-        <LoadingState />
+        <ListSkeleton />
       </View>
     );
   }
@@ -99,6 +150,15 @@ export function MessagesScreen() {
             accessibilityLabel="Search messages"
           >
             <Ionicons name="search-outline" size={24} color={colors.text} />
+          </Pressable>
+          <Pressable
+            style={styles.iconBtn}
+            onPress={openNewGroup}
+            hitSlop={8}
+            accessibilityLabel="New group"
+          >
+            <Ionicons name="people-outline" size={24} color={colors.text} />
+            {!canCreateGroup ? <PremiumBadge style={styles.iconBadge} /> : null}
           </Pressable>
           <Pressable
             style={styles.iconBtn}
@@ -119,8 +179,11 @@ export function MessagesScreen() {
         }
         refreshControl={
           <RefreshControl
-            refreshing={conversationsQuery.isRefetching}
-            onRefresh={() => conversationsQuery.refetch()}
+            refreshing={conversationsQuery.isRefetching || groupsQuery.isRefetching}
+            onRefresh={() => {
+              void conversationsQuery.refetch();
+              void groupsQuery.refetch();
+            }}
             tintColor={colors.primary}
           />
         }
@@ -140,10 +203,10 @@ export function MessagesScreen() {
                 onPress={() => setFilter('unread')}
               />
               <FilterChip
-                label="Requests"
-                count={0}
-                active={filter === 'requests'}
-                onPress={() => setFilter('requests')}
+                label="Groups"
+                count={groupCount}
+                active={filter === 'groups'}
+                onPress={() => setFilter('groups')}
               />
             </View>
 
@@ -163,25 +226,43 @@ export function MessagesScreen() {
           </View>
         }
         ListEmptyComponent={
-          <EmptyState
-            title={
-              filter === 'requests'
-                ? 'No message requests'
-                : filter === 'unread'
-                  ? 'No unread messages'
-                  : 'No conversations'
-            }
-            message={
-              filter === 'requests'
-                ? 'Message requests from people outside your network will show up here.'
-                : 'Start a chat from a connection or tap the compose button.'
-            }
-          />
+          <View style={styles.emptyWrap}>
+            <EmptyState
+              title={
+                filter === 'groups'
+                  ? 'No group chats yet'
+                  : filter === 'unread'
+                    ? 'No unread messages'
+                    : 'No conversations'
+              }
+              message={
+                filter === 'groups'
+                  ? 'Start a group with up to 15 of your connections.'
+                  : filter === 'unread'
+                    ? "You're all caught up."
+                    : 'Start a chat with one of your connections.'
+              }
+            />
+            {filter === 'groups' ? (
+              <Pressable style={styles.emptyCta} onPress={openNewGroup} accessibilityRole="button">
+                <Ionicons name="people" size={18} color={colors.white} />
+                <Text style={styles.emptyCtaText}>Create Group</Text>
+                {!canCreateGroup ? <PremiumBadge size={9} /> : null}
+              </Pressable>
+            ) : filter === 'all' ? (
+              <Pressable style={styles.emptyCta} onPress={() => router.push('/new-message' as Href)} accessibilityRole="button">
+                <Ionicons name="create-outline" size={18} color={colors.white} />
+                <Text style={styles.emptyCtaText}>New Message</Text>
+              </Pressable>
+            ) : null}
+          </View>
         }
         renderItem={({ item }) => (
           <ConversationRow
             item={item}
-            onPress={() => router.push(`/chat/${item.id}` as Href)}
+            onPress={() =>
+              router.push((isGroupRow(item) ? `/group/${item.groupId}` : `/chat/${item.id}`) as Href)
+            }
           />
         )}
       />
@@ -224,8 +305,9 @@ function ConversationRow({
   item: Conversation;
   onPress: () => void;
 }) {
+  const group = isGroupRow(item);
   const name = conversationName(item);
-  const roleLine = conversationRoleLine(item);
+  const roleLine = group ? `${Number(item.memberCount ?? 0)} members` : conversationRoleLine(item);
   const preview = conversationPreview(item);
   const time = formatConversationTime(item.lastMessageAt ?? item.updatedAt);
   const unread = Number(item.unreadCount ?? 0);
@@ -234,8 +316,14 @@ function ConversationRow({
   return (
     <Pressable style={styles.row} onPress={onPress}>
       <View style={styles.avatarWrap}>
-        <Avatar name={name} size={52} />
-        {online ? <View style={styles.onlineDot} /> : null}
+        {group ? (
+          <View style={styles.groupAvatar}>
+            <Ionicons name="people" size={26} color={colors.primary} />
+          </View>
+        ) : (
+          <Avatar name={name} size={52} />
+        )}
+        {online && !group ? <View style={styles.onlineDot} /> : null}
       </View>
 
       <View style={styles.rowBody}>
@@ -272,6 +360,14 @@ function ConversationRow({
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.white },
+  groupAvatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.primaryMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   topBar: {
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
@@ -284,6 +380,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
   },
+  iconBadge: { position: 'absolute', top: 2, right: 0 },
+  emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  emptyCta: {
+    marginTop: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    borderRadius: radius.full,
+    backgroundColor: colors.primary,
+  },
+  emptyCtaText: { fontFamily: typography.fontFamily.semibold, fontSize: 15, color: colors.white },
   iconBtn: {
     width: 40,
     height: 40,

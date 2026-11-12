@@ -1,4 +1,4 @@
-import { Alert, Linking, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { router, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -9,6 +9,8 @@ import { useAuthActions } from '@/src/hooks/useAuthActions';
 import { useAuthStore } from '@/src/store/authStore';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
+import { appAlert } from '@/src/components/AppDialog';
+import { openInApp } from '@/src/utils/openInApp';
 type MenuItem = {
   key: string;
   label: string;
@@ -60,12 +62,12 @@ export function SettingsScreen() {
       label: 'FAQ',
       icon: 'bulb-outline',
       onPress: () =>
-        Alert.alert(
+        appAlert(
           'FAQ',
           'Visit Support to ask a question, or open Privacy Policy and Terms for account details.',
           [
             { text: 'Support', onPress: () => router.push('/support' as Href) },
-            { text: 'Privacy', onPress: () => void Linking.openURL(LEGAL.privacyUrl) },
+            { text: 'Privacy', onPress: () => openInApp(LEGAL.privacyUrl) },
             { text: 'Close', style: 'cancel' },
           ],
         ),
@@ -109,7 +111,7 @@ export function SettingsScreen() {
       icon: 'log-out-outline',
       danger: true,
       onPress: () =>
-        Alert.alert('Sign out', 'Are you sure you want to sign out?', [
+        appAlert('Sign out', 'Are you sure you want to sign out?', [
           { text: 'Cancel', style: 'cancel' },
           {
             text: 'Sign out',
@@ -181,11 +183,11 @@ export function SettingsScreen() {
         </View>
 
         <View style={styles.legalRow}>
-          <Pressable onPress={() => void Linking.openURL(LEGAL.privacyUrl)}>
+          <Pressable onPress={() => openInApp(LEGAL.privacyUrl)}>
             <Text style={styles.legalLink}>Privacy Policy</Text>
           </Pressable>
           <Text style={styles.legalDot}>·</Text>
-          <Pressable onPress={() => void Linking.openURL(LEGAL.termsUrl)}>
+          <Pressable onPress={() => openInApp(LEGAL.termsUrl)}>
             <Text style={styles.legalLink}>Terms of Service</Text>
           </Pressable>
         </View>

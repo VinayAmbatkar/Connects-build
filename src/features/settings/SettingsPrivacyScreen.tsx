@@ -1,13 +1,15 @@
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { alertApiError } from '@/src/features/billing/featureLocked';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { LoadingState } from '@/src/components/EmptyState';
+
 import { accountApi } from '@/src/api/account';
-import { getErrorMessage } from '@/src/api/client';
 import { useAuthActions } from '@/src/hooks/useAuthActions';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
+import { appAlert } from '@/src/components/AppDialog';
+import { DetailSkeleton } from '@/src/components/Skeleton';
 const OPTIONS = [
   {
     value: 'PUBLIC',
@@ -38,23 +40,20 @@ export function SettingsPrivacyScreen() {
     mutationFn: (profileVisibility: string) =>
       accountApi.updatePrivacy(profileVisibility),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['privacy'] }),
-    onError: (error) => Alert.alert('Error', getErrorMessage(error)),
+    onError: (error) => alertApiError(error),
   });
 
-  const deactivateMutation = useMutation({
-    mutationFn: accountApi.deactivate,
+  const deleteMutation = useMutation({
+    mutationFn: accountApi.deleteAccount,
     onSuccess: async () => {
       await logout();
       router.replace('/(auth)/login');
-      Alert.alert(
-        'Account deactivated',
-        'Your account has been soft-deleted. Contact support to restore it.',
-      );
+      appAlert('Account deleted', 'Your COBILDS account and its data have been permanently deleted.');
     },
-    onError: (error) => Alert.alert('Error', getErrorMessage(error)),
+    onError: (error) => alertApiError(error),
   });
 
-  if (privacyQuery.isLoading) return <LoadingState />;
+  if (privacyQuery.isLoading) return <DetailSkeleton />;
 
   const current = String(
     (privacyQuery.data as { profileVisibility?: string } | undefined)
@@ -98,22 +97,27 @@ export function SettingsPrivacyScreen() {
 
       <Pressable
         style={styles.dangerBtn}
+        disabled={deleteMutation.isPending}
         onPress={() =>
-          Alert.alert(
-            'Deactivate account',
-            'This soft-deletes your account. You can contact support to restore it.',
+          appAlert(
+            'Delete account permanently?',
+            'This erases your profile, projects, posts, connections and messages. This cannot be undone.',
             [
               { text: 'Cancel', style: 'cancel' },
               {
-                text: 'Deactivate',
+                text: 'Continue',
                 style: 'destructive',
-                onPress: () => deactivateMutation.mutate(),
+                onPress: () =>
+                  appAlert('Are you absolutely sure?', 'Your account will be deleted right away.', [
+                    { text: 'Keep my account', style: 'cancel' },
+                    { text: 'Delete forever', style: 'destructive', onPress: () => deleteMutation.mutate() },
+                  ]),
               },
             ],
           )
         }
       >
-        <Text style={styles.dangerText}>Deactivate account</Text>
+        <Text style={styles.dangerText}>{deleteMutation.isPending ? 'Deleting…' : 'Delete account'}</Text>
       </Pressable>
     </View>
   );

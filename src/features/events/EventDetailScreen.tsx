@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import {
   Dimensions,
   Pressable,
@@ -13,12 +13,18 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Avatar } from '@/src/components/Avatar';
 import { PhotoCarousel } from '@/src/components/PhotoCarousel';
-import { ErrorState, LoadingState } from '@/src/components/EmptyState';
+import { ErrorState } from '@/src/components/EmptyState';
 import { eventsApi, getEventPhotoUrls } from '@/src/api/events';
 import { formatRelativeTime } from '@/src/features/profile/profileFormat';
+import { VideoTile } from '@/src/features/profile/ActivityPostCard';
+import { feedKeys } from '@/src/features/events/feedCache';
+import { useAuthStore } from '@/src/store/authStore';
 import type { EventItem } from '@/src/types/api';
 import { colors, spacing, typography } from '@/src/theme/tokens';
 
+import { FeedSkeleton } from '@/src/components/Skeleton';
+import { getErrorMessage } from '@/src/api/client';
+import { appAlert } from '@/src/components/AppDialog';
 const WINDOW = Dimensions.get('window');
 const DETAIL_PHOTO_HEIGHT = Math.min(WINDOW.height * 0.55, WINDOW.width * 1.15);
 
@@ -26,60 +32,76 @@ type Props = {
   eventId: string;
 };
 
+/** A copy already on screen (the card that was tapped seeds
+ *  ['event', id]; the profile list also holds own posts) -- shown
+ *  instantly while the real fetch confirms it. */
 function findEventInCache(
   queryClient: ReturnType<typeof useQueryClient>,
   eventId: string,
 ): EventItem | undefined {
-  const direct = queryClient.getQueryData<EventItem>(['event', eventId]);
+  const direct = queryClient.getQueryData<EventItem>(feedKeys.event(eventId));
   if (direct?.id != null && String(direct.id) === eventId) return direct;
 
   const mine = queryClient.getQueryData<EventItem[]>(['my-events']);
-  const fromMine = Array.isArray(mine)
-    ? mine.find((item) => String(item.id) === eventId)
-    : undefined;
-  if (fromMine) return fromMine;
-
-  const feed = queryClient.getQueryData<{ pages?: EventItem[][] }>(['events-feed']);
-  if (feed?.pages) {
-    for (const page of feed.pages) {
-      const match = page.find((item) => String(item.id) === eventId);
-      if (match) return match;
-    }
-  }
-
-  return undefined;
+  return Array.isArray(mine) ? mine.find((item) => String(item.id) === eventId) : undefined;
 }
 
 export function EventDetailScreen({ eventId }: Props) {
   const queryClient = useQueryClient();
 
+  const me = useAuthStore((s) => s.user);
+
+  // GET /events/:id. This used to download your own posts plus 100 feed
+  // posts and search them, so any post outside those (older, or opened
+  // from a notification or link) showed "Event unavailable".
   const eventQuery = useQuery({
-    queryKey: ['event', eventId],
+    queryKey: feedKeys.event(eventId),
     queryFn: async () => {
+      const fetched = await eventsApi.get(eventId);
+      // The single-post response has no owner name; keep the one the
+      // tapped card already had.
       const cached = findEventInCache(queryClient, eventId);
-      if (cached) return cached;
-
-      // Prefer own list, then feed scan — backend has no dedicated get-by-id in the collection.
-      const mine = await eventsApi.listMine();
-      const fromMine = mine.find((item) => String(item.id) === eventId);
-      if (fromMine) return fromMine;
-
-      const feed = await eventsApi.feed(100, 0);
-      const fromFeed = feed.find((item) => String(item.id) === eventId);
-      if (fromFeed) return fromFeed;
-
-      throw new Error('Event not found');
+      return { ...cached, ...fetched, ownerName: fetched.ownerName ?? cached?.ownerName } as EventItem;
     },
-    initialData: () => findEventInCache(queryClient, eventId),
+    placeholderData: () => findEventInCache(queryClient, eventId),
   });
 
   const event = eventQuery.data;
   const photos = useMemo(() => getEventPhotoUrls(event), [event]);
+  const isMine = event?.userId != null && String(event.userId) === String(me?.id ?? '');
+  // The post title used to be the fallback author name.
   const author =
-    event?.ownerName ?? event?.authorName ?? event?.title ?? 'Event';
+    event?.ownerName ?? event?.authorName ?? (isMine ? me?.fullName : undefined) ?? 'Member';
   const postedAt = event?.createdAt ?? event?.eventDate;
 
-  if (eventQuery.isLoading && !event) return <LoadingState />;
+  const handleDelete = useCallback(async () => {
+    try {
+      await eventsApi.remove(eventId);
+      // Invalidate all relevant queries to trigger immediate refetch
+      queryClient.invalidateQueries({ queryKey: ['my-events'] });
+      queryClient.invalidateQueries({ queryKey: ['events-feed'] });
+      queryClient.invalidateQueries({ queryKey: ['user-events'] });
+      queryClient.invalidateQueries({ queryKey: feedKeys.event(eventId) });
+      appAlert('Deleted', 'Your post has been removed.');
+      router.back();
+    } catch (e) {
+      appAlert("Couldn't delete", getErrorMessage(e));
+    }
+  }, [eventId, queryClient]);
+
+  const handleMoreOptions = useCallback(() => {
+    if (!isMine) return;
+    appAlert('Delete post?', 'This action cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: handleDelete,
+      },
+    ]);
+  }, [isMine, handleDelete]);
+
+  if (eventQuery.isLoading && !event) return <FeedSkeleton posts={1} />;
 
   if (eventQuery.isError && !event) {
     return (
@@ -109,7 +131,13 @@ export function EventDetailScreen({ eventId }: Props) {
           <Ionicons name="close" size={24} color={colors.text} />
         </Pressable>
         <Text style={styles.topTitle}>Event</Text>
-        <View style={styles.iconBtn} />
+        <Pressable
+          onPress={handleMoreOptions}
+          style={styles.iconBtn}
+          accessibilityLabel={isMine ? 'Post options' : ''}
+        >
+          {isMine && <Ionicons name="ellipsis-horizontal" size={24} color={colors.text} />}
+        </Pressable>
       </View>
 
       <ScrollView
@@ -135,13 +163,20 @@ export function EventDetailScreen({ eventId }: Props) {
         ) : null}
 
         {photos.length ? (
-          <PhotoCarousel
-            urls={photos}
-            height={DETAIL_PHOTO_HEIGHT}
-            style={styles.carousel}
-            borderRadius={12}
-            resizeMode="contain"
-          />
+          <View style={styles.media}>
+            <PhotoCarousel
+              urls={photos}
+              height={DETAIL_PHOTO_HEIGHT}
+              borderRadius={12}
+              resizeMode="contain"
+            />
+          </View>
+        ) : null}
+
+        {event.videoUrl ? (
+          <View style={styles.media}>
+            <VideoTile url={event.videoUrl} rounded />
+          </View>
         ) : null}
 
         {photos.length > 1 ? (
@@ -211,9 +246,13 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     color: colors.text,
   },
-  carousel: {
+  // Padding on a wrapper, not margin on the carousel: the carousel is
+  // width 100%, and in React Native margins are added on top of a
+  // percentage width, so the photo overflowed the right edge by twice the
+  // margin (the "post not aligned" look).
+  media: {
     marginTop: spacing.md,
-    marginHorizontal: spacing.md,
+    paddingHorizontal: spacing.md,
   },
   hint: {
     marginTop: spacing.sm,

@@ -1,6 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Link } from 'expo-router';
-import { BrandTaglineFooter } from '@/src/components/BrandTaglineFooter';
 import { colors, spacing, typography } from '@/src/theme/tokens';
 
 const BRAND = '#F57D01';
@@ -21,7 +20,6 @@ export function SignupAccountFooter() {
         <View style={styles.line} />
       </View>
 
-      <BrandTaglineFooter />
     </View>
   );
 }
@@ -29,7 +27,6 @@ export function SignupAccountFooter() {
 const styles = StyleSheet.create({
   wrap: {
     marginTop: spacing.md,
-    gap: spacing.md,
   },
   loginRow: {
     flexDirection: 'row',

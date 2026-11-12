@@ -122,9 +122,29 @@ export function getEventPhotoUrls(item: EventItem | null | undefined): string[] 
 }
 
 export const eventsApi = {
-  feed: (limit = 20, offset = 0) =>
+  /** Everyone else's posts, newest first. scope 'network' = only accepted
+   *  connections (server-side; the Network tab used to filter the global
+   *  feed on the phone, paging through all of it). */
+  feed: (limit = 20, offset = 0, scope?: 'network') =>
     apiClient
-      .get<EventListResponse>('/events/feed', { params: { limit, offset } })
+      .get<EventListResponse>('/events/feed', {
+        params: { limit, offset, ...(scope ? { scope } : {}) },
+      })
+      .then((r) => unwrapEvents(r.data)),
+
+  /** One post by id -- for the detail screen, notifications and links. */
+  get: (id: string | number) =>
+    apiClient
+      .get(`/events/${id}`)
+      .then((r) => normalizeEvent(r.data as Record<string, unknown>)),
+
+  /** Someone's posts, newest first, for their profile. Gated like the
+   *  profile (privacy, blocks): 404 when you can't open it. */
+  listByUser: (userId: string | number, limit = 10, offset = 0) =>
+    apiClient
+      .get<EventListResponse>(`/events/user/${encodeURIComponent(String(userId))}`, {
+        params: { limit, offset },
+      })
       .then((r) => unwrapEvents(r.data)),
 
   listMine: () =>
@@ -159,25 +179,19 @@ export const eventsApi = {
   /** @deprecated Prefer uploadPhotos — kept for older callers. */
   uploadImage: (id: string | number, formData: FormData) =>
     apiClient
-      .post(`/events/${id}/image`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+      .post(`/events/${id}/image`, formData, { timeout: 60000 })
       .then((r) => r.data),
 
   /** 2–4 photos after create (field name `photos`, same as web). */
   uploadPhotos: (id: string | number, formData: FormData) =>
     apiClient
-      .post(`/events/${id}/photos`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+      .post(`/events/${id}/photos`, formData, { timeout: 60000 })
       .then((r) => r.data),
 
   /** Single video after create (field name `video`, same as web). */
   uploadVideo: (id: string | number, formData: FormData) =>
     apiClient
-      .post(`/events/${id}/video`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+      .post(`/events/${id}/video`, formData, { timeout: 120000 })
       .then((r) => r.data),
 
   // ── Interactions ──────────────────────────────────────────────────────

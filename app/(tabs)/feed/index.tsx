@@ -9,25 +9,23 @@ import {
   View,
 } from 'react-native';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { EmptyState, ErrorState, LoadingState } from '@/src/components/EmptyState';
+import { EmptyState, ErrorState } from '@/src/components/EmptyState';
 import { DemoTourOverlay } from '@/src/features/tour/DemoTourOverlay';
 import { TOUR_STEPS } from '@/src/features/tour/tourSteps';
 import { ActivityPostCard } from '@/src/features/profile/ActivityPostCard';
-import { eventsApi } from '@/src/api/events';
-import { connectionsApi } from '@/src/api/connections';
+import { eventsApi, normalizeEvent } from '@/src/api/events';
 import { getErrorMessage } from '@/src/api/client';
+import { feedKeys, flattenUnique, nextOffset, upsertEventAtTop } from '@/src/features/events/feedCache';
 import { useSSE } from '@/src/hooks/useSSE';
 import { useAuthStore } from '@/src/store/authStore';
 import { usePrefsStore } from '@/src/store/prefsStore';
 import { colors, spacing, typography } from '@/src/theme/tokens';
-import type { Connection, EventItem } from '@/src/types/api';
+import type { EventItem } from '@/src/types/api';
 
+import { FeedSkeleton } from '@/src/components/Skeleton';
 const PAGE_SIZE = 20;
-/** Network posts are filtered client-side, so keep paging until a screenful
- * of them is loaded (or the feed runs out). */
-const MIN_NETWORK_POSTS = 6;
 
 type FeedTab = 'forYou' | 'network';
 
@@ -35,10 +33,6 @@ const FEED_TABS: { key: FeedTab; label: string }[] = [
   { key: 'forYou', label: 'For you' },
   { key: 'network', label: 'Network' },
 ];
-
-function connectionUserId(item: Connection) {
-  return item.otherPartyId ?? item.userId ?? item.requesterId ?? item.recipientId;
-}
 
 function FeedTabs({ active, onChange }: { active: FeedTab; onChange: (tab: FeedTab) => void }) {
   return (
@@ -77,61 +71,42 @@ export default function FeedScreen() {
     }
   }, [params.tour, hasCompletedTour]);
 
-  const feedQuery = useInfiniteQuery({
-    queryKey: ['events-feed'],
+  // One server-paged list per tab. The Network tab used to page through
+  // the whole global feed and filter on the phone until it found 6 posts
+  // from connections -- dozens of requests (endlessly, while the backend
+  // ignored ?offset= and returned page 1 every time).
+  const forYouQuery = useInfiniteQuery({
+    queryKey: feedKeys.feed('forYou'),
     initialPageParam: 0,
     queryFn: ({ pageParam }) => eventsApi.feed(PAGE_SIZE, pageParam),
-    getNextPageParam: (lastPage, _pages, lastOffset) =>
-      lastPage.length < PAGE_SIZE ? undefined : lastOffset + lastPage.length,
+    getNextPageParam: nextOffset(PAGE_SIZE),
   });
-
-  const connectionsQuery = useQuery({
-    queryKey: ['connections', 'accepted'],
-    queryFn: () => connectionsApi.list({ filter: 'accepted', limit: 100 }),
+  const networkQuery = useInfiniteQuery({
+    queryKey: feedKeys.feed('network'),
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) => eventsApi.feed(PAGE_SIZE, pageParam, 'network'),
+    getNextPageParam: nextOffset(PAGE_SIZE),
     enabled: activeTab === 'network',
   });
+  const feedQuery = activeTab === 'network' ? networkQuery : forYouQuery;
 
-  const allPosts = useMemo<EventItem[]>(
-    () => feedQuery.data?.pages.flat() ?? [],
-    [feedQuery.data],
-  );
+  const data = useMemo<EventItem[]>(() => flattenUnique(feedQuery.data), [feedQuery.data]);
 
-  const networkIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const c of connectionsQuery.data ?? []) {
-      const id = connectionUserId(c);
-      if (id != null && String(id) !== String(myId)) ids.add(String(id));
-    }
-    return ids;
-  }, [connectionsQuery.data, myId]);
-
-  const data = useMemo(() => {
-    if (activeTab === 'forYou') return allPosts;
-    return allPosts.filter((post) => {
-      const authorId = post.userId ?? post.authorId;
-      return authorId != null && networkIds.has(String(authorId));
-    });
-  }, [activeTab, allPosts, networkIds]);
-
-  const { hasNextPage, isFetchingNextPage, fetchNextPage } = feedQuery;
-  const networkReady = activeTab === 'network' && connectionsQuery.isSuccess;
-  useEffect(() => {
-    if (
-      networkReady &&
-      networkIds.size > 0 &&
-      data.length < MIN_NETWORK_POSTS &&
-      hasNextPage &&
-      !isFetchingNextPage
-    ) {
-      void fetchNextPage();
-    }
-  }, [networkReady, networkIds.size, data.length, hasNextPage, isFetchingNextPage, fetchNextPage]);
-
+  // A live post is inserted where it belongs instead of refetching -- a
+  // refetch of an infinite query re-downloads every loaded page.
+  const queryClient = useQueryClient();
   useSSE({
     path: '/events/stream',
     enabled: true,
-    onMessage: () => {
-      void feedQuery.refetch();
+    onMessage: (raw) => {
+      try {
+        const event = normalizeEvent(JSON.parse(raw) as Record<string, unknown>);
+        if (event.id == null || event.id === '') return;
+        if (String(event.userId ?? '') === String(myId ?? '')) return;
+        upsertEventAtTop(queryClient, event);
+      } catch {
+        // Malformed frame -- ignore; the next pull-to-refresh catches up.
+      }
     },
   });
 
@@ -148,9 +123,12 @@ export default function FeedScreen() {
     setTourStep((s) => s + 1);
   };
 
-  if (feedQuery.isLoading) return <LoadingState />;
+  const isNetwork = activeTab === 'network';
+  // Full-screen states only for the first tab's first load; the Network
+  // tab loads inside the list so the tab bar stays put.
+  if (!isNetwork && feedQuery.isLoading) return <FeedSkeleton />;
 
-  if (feedQuery.isError) {
+  if (!isNetwork && feedQuery.isError) {
     return (
       <ErrorState
         title="Feed unavailable"
@@ -160,9 +138,7 @@ export default function FeedScreen() {
     );
   }
 
-  const isNetwork = activeTab === 'network';
-  const networkLoading =
-    isNetwork && (connectionsQuery.isLoading || (data.length === 0 && isFetchingNextPage));
+  const networkLoading = isNetwork && feedQuery.isLoading;
 
   return (
     <View style={styles.screen}>
@@ -179,7 +155,6 @@ export default function FeedScreen() {
             refreshing={feedQuery.isRefetching && !feedQuery.isFetchingNextPage}
             onRefresh={() => {
               void feedQuery.refetch();
-              if (isNetwork) void connectionsQuery.refetch();
             }}
             tintColor={colors.primary}
             colors={[colors.primary]}
@@ -193,15 +168,11 @@ export default function FeedScreen() {
         onEndReachedThreshold={0.4}
         ListEmptyComponent={
           networkLoading ? (
-            <LoadingState />
+            <FeedSkeleton />
           ) : isNetwork ? (
             <EmptyState
               title="No posts from your network yet"
-              message={
-                networkIds.size === 0
-                  ? 'Connect with professionals to see their updates here.'
-                  : 'Updates from your connections will show up here.'
-              }
+              message="Updates from your connections will show up here. Connect with professionals to grow your network."
             />
           ) : (
             <EmptyState

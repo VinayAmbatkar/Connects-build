@@ -1,11 +1,12 @@
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { eventsApi } from '@/src/api/events';
 import { getErrorMessage } from '@/src/api/client';
 import { ActivityPostCard } from '@/src/features/profile/ActivityPostCard';
 import { ProfileSectionCard } from '@/src/features/profile/ProfileSectionCard';
+import { feedKeys, flattenUnique, nextOffset } from '@/src/features/events/feedCache';
 import { useAuthStore } from '@/src/store/authStore';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 import type { EventItem, ProfessionalProfile } from '@/src/types/api';
@@ -26,10 +27,7 @@ type Props = {
   ownerUserId?: string | number | null;
 };
 
-function matchesOwner(event: EventItem, ownerId: string) {
-  const candidates = [event.userId, event.authorId, (event as { ownerId?: unknown }).ownerId];
-  return candidates.some((id) => id != null && String(id) === ownerId);
-}
+const PAGE_SIZE = 10;
 
 export function ProfileActivitySection({
   profile,
@@ -48,6 +46,11 @@ export function ProfileActivitySection({
 
   const hasProvidedEvents = Array.isArray(eventsProp) && eventsProp.length > 0;
 
+  // Own profile keeps the existing ['my-events'] list (also used by My
+  // Profile's summary). Anyone else's posts come from GET /events/user/:id,
+  // newest first and paged. This used to take the latest 50 posts from the
+  // global feed and keep that person's -- so anything older never showed,
+  // and the query sat under ['events-feed'], refetching after every like.
   const eventsQuery = useQuery({
     queryKey: ['my-events'],
     queryFn: eventsApi.listMine,
@@ -60,20 +63,18 @@ export function ProfileActivitySection({
     return Array.isArray(eventsQuery.data) ? eventsQuery.data : [];
   }, [hasProvidedEvents, eventsProp, isOwnProfile, eventsQuery.data]);
 
-  const needsFeedFallback = !hasProvidedEvents && mine.length === 0 && ownerKey != null;
-
-  const feedFallbackQuery = useQuery({
-    queryKey: ['events-feed', 'profile-fallback', ownerKey ?? ''],
-    queryFn: () => eventsApi.feed(50, 0),
-    enabled: needsFeedFallback && !eventsQuery.isLoading,
+  const theirsQuery = useInfiniteQuery({
+    queryKey: feedKeys.userEvents(ownerKey ?? ''),
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) => eventsApi.listByUser(ownerKey ?? '', showAll ? PAGE_SIZE : PREVIEW_COUNT + 1, pageParam),
+    getNextPageParam: nextOffset(showAll ? PAGE_SIZE : PREVIEW_COUNT + 1),
+    enabled: !hasProvidedEvents && !isOwnProfile && ownerKey != null,
   });
 
-  const events = useMemo(() => {
-    if (mine.length) return mine;
-    const feed = Array.isArray(feedFallbackQuery.data) ? feedFallbackQuery.data : [];
-    if (!ownerKey) return [];
-    return feed.filter((item) => matchesOwner(item, ownerKey));
-  }, [mine, feedFallbackQuery.data, ownerKey]);
+  const events = useMemo(
+    () => (isOwnProfile || hasProvidedEvents ? mine : flattenUnique(theirsQuery.data)),
+    [isOwnProfile, hasProvidedEvents, mine, theirsQuery.data],
+  );
 
   const visible = showAll ? events : events.slice(0, PREVIEW_COUNT);
   const subtitle =
@@ -83,7 +84,7 @@ export function ProfileActivitySection({
 
   const isLoading =
     (isOwnProfile && !hasProvidedEvents && eventsQuery.isLoading) ||
-    (needsFeedFallback && feedFallbackQuery.isLoading);
+    (!isOwnProfile && !hasProvidedEvents && theirsQuery.isLoading);
 
   if (isLoading) {
     return (
@@ -142,8 +143,22 @@ export function ProfileActivitySection({
 
       {!showAll && events.length > PREVIEW_COUNT ? (
         <Pressable onPress={() => router.push('/(tabs)/feed')} style={styles.showAll}>
-          <Text style={styles.showAllText}>Show all {events.length} events</Text>
+          <Text style={styles.showAllText}>Show all events</Text>
           <Text style={styles.showAllArrow}>→</Text>
+        </Pressable>
+      ) : null}
+
+      {showAll && !isOwnProfile && theirsQuery.hasNextPage ? (
+        <Pressable
+          onPress={() => {
+            if (!theirsQuery.isFetchingNextPage) void theirsQuery.fetchNextPage();
+          }}
+          style={styles.showAll}
+          accessibilityRole="button"
+        >
+          <Text style={styles.showAllText}>
+            {theirsQuery.isFetchingNextPage ? 'Loading…' : 'Show more posts'}
+          </Text>
         </Pressable>
       ) : null}
     </ProfileSectionCard>

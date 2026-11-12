@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -21,6 +20,9 @@ import { Avatar } from '@/src/components/Avatar';
 import { BottomSheet } from '@/src/components/BottomSheet';
 import { getErrorMessage } from '@/src/api/client';
 import { eventsApi } from '@/src/api/events';
+import { upsertEventAtTop } from '@/src/features/events/feedCache';
+import { appendNativeFile } from '@/src/utils/nativeFormData';
+import type { EventItem } from '@/src/types/api';
 import {
   LOCATION_OPTIONS,
   getLocationLabel,
@@ -28,6 +30,7 @@ import {
 import { useAuthStore } from '@/src/store/authStore';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
+import { appAlert } from '@/src/components/AppDialog';
 type AttachmentType = 'none' | 'photos' | 'video';
 
 type PickedMedia = {
@@ -39,6 +42,7 @@ type PickedMedia = {
 
 const MIN_PHOTOS = 2;
 const MAX_PHOTOS = 4;
+const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 const ALLOWED_PHOTO = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp']);
 const ALLOWED_VIDEO = new Set(['video/mp4', 'video/webm', 'video/quicktime']);
@@ -52,7 +56,7 @@ function toFormFile(asset: PickedMedia) {
     uri: asset.uri,
     name: asset.name,
     type: asset.type,
-  } as unknown as Blob;
+  };
 }
 
 export function CreatePostScreen() {
@@ -72,6 +76,7 @@ export function CreatePostScreen() {
   const [mediaError, setMediaError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [allowLeave, setAllowLeave] = useState(false);
+  const [pendingEvent, setPendingEvent] = useState<EventItem | null>(null);
 
   useEffect(() => {
     const attach = String(params.attach ?? '');
@@ -100,7 +105,20 @@ export function CreatePostScreen() {
     [title, body, location, photos.length, video],
   );
 
-  const discardAndLeave = () => {
+  const discardPendingEvent = useCallback(async () => {
+    if (!pendingEvent) return true;
+    try {
+      await eventsApi.remove(pendingEvent.id);
+      setPendingEvent(null);
+      return true;
+    } catch (error) {
+      appAlert('Could not discard post', getErrorMessage(error));
+      return false;
+    }
+  }, [pendingEvent]);
+
+  const discardAndLeave = async () => {
+    if (!(await discardPendingEvent())) return;
     setAllowLeave(true);
     router.back();
   };
@@ -110,7 +128,7 @@ export function CreatePostScreen() {
       router.back();
       return;
     }
-    Alert.alert(
+    appAlert(
       'Discard post?',
       'Do you want to discard this Post?',
       [
@@ -118,7 +136,7 @@ export function CreatePostScreen() {
         {
           text: 'Discard',
           style: 'destructive',
-          onPress: discardAndLeave,
+          onPress: () => void discardAndLeave(),
         },
       ],
     );
@@ -128,7 +146,7 @@ export function CreatePostScreen() {
     const unsubscribe = navigation.addListener('beforeRemove', (e) => {
       if (allowLeave || !hasDraft || submitting) return;
       e.preventDefault();
-      Alert.alert(
+      appAlert(
         'Discard post?',
         'Do you want to discard this Post?',
         [
@@ -136,7 +154,8 @@ export function CreatePostScreen() {
           {
             text: 'Discard',
             style: 'destructive',
-            onPress: () => {
+            onPress: async () => {
+              if (!(await discardPendingEvent())) return;
               setAllowLeave(true);
               navigation.dispatch(e.data.action);
             },
@@ -145,7 +164,7 @@ export function CreatePostScreen() {
       );
     });
     return unsubscribe;
-  }, [navigation, allowLeave, hasDraft, submitting]);
+  }, [navigation, allowLeave, hasDraft, submitting, discardPendingEvent]);
 
   const locationLabel = location
     ? getLocationLabel(location) || location
@@ -162,7 +181,7 @@ export function CreatePostScreen() {
     setMoreOpen(false);
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Permission needed', 'Allow photo library access to attach images.');
+      appAlert('Permission needed', 'Allow photo library access to attach images.');
       return;
     }
 
@@ -176,16 +195,24 @@ export function CreatePostScreen() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsMultipleSelection: true,
       selectionLimit: remaining,
-      quality: 0.85,
+      quality: 0.7,
     });
 
     if (result.canceled || !result.assets.length) return;
 
     const next: PickedMedia[] = [];
+    let rejected = false;
     for (const asset of result.assets) {
-      const mime = (asset.mimeType ?? 'image/jpeg').toLowerCase();
-      if (!ALLOWED_PHOTO.has(mime) && !mime.startsWith('image/')) {
+      const detectedMime = (asset.mimeType ?? 'image/jpeg').toLowerCase();
+      const mime = detectedMime === 'image/jpg' ? 'image/jpeg' : detectedMime;
+      if (!ALLOWED_PHOTO.has(mime)) {
+        rejected = true;
         setMediaError('Use JPEG, PNG, or WebP images.');
+        continue;
+      }
+      if (asset.fileSize != null && asset.fileSize > MAX_PHOTO_BYTES) {
+        rejected = true;
+        setMediaError('Each photo must be 5MB or smaller.');
         continue;
       }
       next.push({
@@ -202,14 +229,14 @@ export function CreatePostScreen() {
       const base = attachmentType === 'photos' ? prev : [];
       return [...base, ...next].slice(0, MAX_PHOTOS);
     });
-    setMediaError('');
+    if (!rejected) setMediaError('');
   };
 
   const pickVideo = async () => {
     setMoreOpen(false);
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Permission needed', 'Allow media library access to attach a video.');
+      appAlert('Permission needed', 'Allow media library access to attach a video.');
       return;
     }
 
@@ -223,7 +250,7 @@ export function CreatePostScreen() {
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
     const mime = (asset.mimeType ?? 'video/mp4').toLowerCase();
-    if (!ALLOWED_VIDEO.has(mime) && !mime.startsWith('video/')) {
+    if (!ALLOWED_VIDEO.has(mime)) {
       setMediaError('Use MP4, WebM, or MOV video.');
       return;
     }
@@ -243,10 +270,28 @@ export function CreatePostScreen() {
     setMediaError('');
   };
 
-  const finishAndGoBack = async () => {
-    await queryClient.invalidateQueries({ queryKey: ['events-feed'] });
-    await queryClient.invalidateQueries({ queryKey: ['my-events'] });
-    Alert.alert('Posted', 'Your post is live on the feed.');
+  /** Shows the new post at the top of the feed and your profile right
+   *  away. The server feed never returns your own posts, so the old
+   *  "invalidate the feed" refetched every page and still didn't show it.
+   *  Re-read once so the cached copy has the uploaded photo/video URLs. */
+  const showPostedEvent = async (created: EventItem) => {
+    let posted: EventItem = created;
+    try {
+      posted = await eventsApi.get(created.id);
+    } catch {
+      // Fall back to the create response (no media URLs yet).
+    }
+    upsertEventAtTop(
+      queryClient,
+      { ...posted, ownerName: posted.ownerName ?? user?.fullName, userId: posted.userId ?? user?.id },
+      { ownerId: user?.id },
+    );
+    void queryClient.invalidateQueries({ queryKey: ['my-events'] });
+  };
+
+  const finishAndGoBack = async (created: EventItem) => {
+    await showPostedEvent(created);
+    appAlert('Posted', 'Your post is live on the feed.');
     setAllowLeave(true);
     router.back();
   };
@@ -255,7 +300,7 @@ export function CreatePostScreen() {
     const trimmedTitle = title.trim();
     const text = body.trim();
     if (!trimmedTitle) {
-      Alert.alert('Title required', 'Add a title before posting.');
+      appAlert('Title required', 'Add a title before posting.');
       return;
     }
     if (attachmentType === 'photos' && photos.length > 0 && photos.length < MIN_PHOTOS) {
@@ -266,38 +311,41 @@ export function CreatePostScreen() {
     setSubmitting(true);
     setMediaError('');
     try {
-      const created = await eventsApi.create({
-        title: trimmedTitle,
-        description: text,
-        location: location.trim(),
-        eventDate: new Date(todayIsoDate()).toISOString(),
-      });
+      let created = pendingEvent;
+      if (!created) {
+        created = await eventsApi.create({
+          title: trimmedTitle,
+          description: text,
+          location: location.trim(),
+          eventDate: new Date(todayIsoDate()).toISOString(),
+        });
+        setPendingEvent(created);
+      }
 
       try {
         if (attachmentType === 'photos' && photos.length > 0) {
           const formData = new FormData();
-          photos.forEach((photo) => formData.append('photos', toFormFile(photo)));
+          photos.forEach((photo) => appendNativeFile(formData, 'photos', toFormFile(photo)));
           await eventsApi.uploadPhotos(created.id, formData);
         } else if (attachmentType === 'video' && video) {
           const formData = new FormData();
-          formData.append('video', toFormFile(video));
+          appendNativeFile(formData, 'video', toFormFile(video));
           await eventsApi.uploadVideo(created.id, formData);
         }
       } catch (uploadError) {
-        Alert.alert(
-          'Posted without media',
-          `Your post was created, but media upload failed: ${getErrorMessage(uploadError)}`,
+        const message = getErrorMessage(uploadError);
+        setMediaError(`Media upload failed: ${message}`);
+        appAlert(
+          'Media upload failed',
+          'Your post is saved and your media selection is still here. Tap Retry upload to try again.',
         );
-        await queryClient.invalidateQueries({ queryKey: ['events-feed'] });
-        await queryClient.invalidateQueries({ queryKey: ['my-events'] });
-        setAllowLeave(true);
-        router.back();
         return;
       }
 
-      await finishAndGoBack();
+      setPendingEvent(null);
+      await finishAndGoBack(created);
     } catch (error) {
-      Alert.alert('Error', getErrorMessage(error));
+      appAlert('Error', getErrorMessage(error));
     } finally {
       setSubmitting(false);
     }
@@ -354,6 +402,10 @@ export function CreatePostScreen() {
             style={[styles.postBtn, !canSubmit && styles.postBtnDisabled]}
             disabled={!canSubmit}
             onPress={() => void submit()}
+            accessibilityRole="button"
+            accessibilityLabel={
+              pendingEvent && attachmentType !== 'none' ? 'Retry media upload' : 'Post event'
+            }
           >
             {submitting ? (
               <ActivityIndicator size="small" color={colors.white} />
@@ -361,7 +413,7 @@ export function CreatePostScreen() {
               <Text
                 style={[styles.postBtnText, !canSubmit && styles.postBtnTextDisabled]}
               >
-                Post
+                {pendingEvent && attachmentType !== 'none' ? 'Retry' : 'Post'}
               </Text>
             )}
           </Pressable>

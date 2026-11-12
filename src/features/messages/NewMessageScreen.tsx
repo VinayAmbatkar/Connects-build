@@ -1,7 +1,7 @@
+import { alertApiError } from '@/src/features/billing/featureLocked';
 import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Pressable,
   StyleSheet,
@@ -14,14 +14,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Avatar } from '@/src/components/Avatar';
-import { EmptyState, LoadingState } from '@/src/components/EmptyState';
-import { getErrorMessage } from '@/src/api/client';
+import { EmptyState } from '@/src/components/EmptyState';
 import { connectionsApi } from '@/src/api/connections';
 import { messagesApi } from '@/src/api/messages';
 import { searchApi } from '@/src/api/search';
 import type { Connection, ProfessionalSearchResult } from '@/src/types/api';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
+import { ListSkeleton } from '@/src/components/Skeleton';
 function connectionName(item: Connection) {
   return item.otherPartyName ?? item.fullName ?? 'Member';
 }
@@ -107,7 +107,7 @@ export function NewMessageScreen() {
       void queryClient.invalidateQueries({ queryKey: ['conversations'] });
       router.replace(`/chat/${conversation.id}` as Href);
     },
-    onError: (error) => Alert.alert('Error', getErrorMessage(error)),
+    onError: (error) => alertApiError(error),
   });
 
   const recent = showAllConnections ? connections : connections.slice(0, 5);
@@ -122,7 +122,7 @@ export function NewMessageScreen() {
   if (connectionsQuery.isLoading) {
     return (
       <View style={[styles.screen, { paddingTop: insets.top }]}>
-        <LoadingState />
+        <ListSkeleton />
       </View>
     );
   }
@@ -202,7 +202,7 @@ export function NewMessageScreen() {
             )}
 
             <SectionHeader
-              title="Suggested Professionals"
+              title="Connect to message"
               showSeeAll={suggested.length > 5}
               expanded={showAllSuggested}
               onSeeAll={() => setShowAllSuggested((v) => !v)}
@@ -229,8 +229,10 @@ export function NewMessageScreen() {
                   <Pressable
                     key={String(id)}
                     style={styles.row}
-                    onPress={() => openChat(id)}
-                    disabled={startMutation.isPending}
+                    // Not connections yet: messaging them would be refused,
+                    // so open their profile to connect first.
+                    onPress={() => id != null && router.push(`/public-profile/${id}` as Href)}
+                    accessibilityHint="Opens their profile so you can connect" 
                   >
                     <Avatar name={searchName(item)} size={48} />
                     <View style={styles.rowCopy}>
@@ -247,7 +249,7 @@ export function NewMessageScreen() {
                       <ActivityIndicator color={colors.primary} />
                     ) : (
                       <View style={styles.plusBtn}>
-                        <Ionicons name="add" size={20} color={colors.primary} />
+                        <Ionicons name="person-add-outline" size={16} color={colors.primary} />
                       </View>
                     )}
                   </Pressable>

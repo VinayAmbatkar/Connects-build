@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -15,12 +14,14 @@ import {
 import { router } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LoadingState } from '@/src/components/EmptyState';
+
 import { getErrorMessage } from '@/src/api/client';
 import { profileApi } from '@/src/api/profile';
 import { BIO_MAX_LENGTH } from '@/src/features/profile/profileSkills';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
+import { appAlert } from '@/src/components/AppDialog';
+import { DetailSkeleton } from '@/src/components/Skeleton';
 const BIO_BOX_MIN_HEIGHT = 280;
 const BIO_INPUT_MIN_HEIGHT = 180;
 
@@ -62,14 +63,14 @@ export function EditAboutScreen() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['my-profile'] });
-      Alert.alert('Saved', 'Your about section was updated.', [
+      appAlert('Saved', 'Your about section was updated.', [
         { text: 'OK', onPress: () => router.back() },
       ]);
     },
-    onError: (error) => Alert.alert('Save failed', getErrorMessage(error)),
+    onError: (error) => appAlert('Save failed', getErrorMessage(error)),
   });
 
-  if (profileQuery.isLoading) return <LoadingState />;
+  if (profileQuery.isLoading) return <DetailSkeleton />;
 
   const counterLabel = `${bio.length.toLocaleString()}/${BIO_MAX_LENGTH.toLocaleString()}`;
   const headerOffset = insets.top + (Platform.OS === 'ios' ? 44 : 56);

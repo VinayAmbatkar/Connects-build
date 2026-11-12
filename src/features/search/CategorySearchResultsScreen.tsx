@@ -1,7 +1,7 @@
+import { alertApiError } from '@/src/features/billing/featureLocked';
 import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Pressable,
   ScrollView,
@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BottomSheet } from '@/src/components/BottomSheet';
-import { EmptyState, ErrorState, LoadingState } from '@/src/components/EmptyState';
+import { EmptyState, ErrorState } from '@/src/components/EmptyState';
 import { connectionsApi } from '@/src/api/connections';
 import { getErrorMessage } from '@/src/api/client';
 import { searchApi } from '@/src/api/search';
@@ -29,10 +29,13 @@ import {
   getSpecializationsForDiscipline,
   type CategoryOption,
 } from '@/src/constants/category';
-import { useSearchFlowStore } from '@/src/features/search/searchFlowStore';
+import { toCategoryParam, useSearchFlowStore } from '@/src/features/search/searchFlowStore';
 import type { ProfessionalSearchResult } from '@/src/types/api';
-import { colors, spacing, typography } from '@/src/theme/tokens';
+import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
+import { appAlert } from '@/src/components/AppDialog';
+import { usePlaceLabel } from '@/src/hooks/usePlaceLabels';
+import { ListSkeleton } from '@/src/components/Skeleton';
 type FilterKey = 'location' | 'projectType' | 'discipline' | 'category' | null;
 
 function FilterChip({
@@ -92,13 +95,17 @@ export function CategorySearchResultsScreen() {
   const queryClient = useQueryClient();
   const role = useSearchFlowStore((s) => s.role);
   const location = useSearchFlowStore((s) => s.location);
-  const projectType = useSearchFlowStore((s) => s.projectType);
-  const discipline = useSearchFlowStore((s) => s.discipline);
-  const specialization = useSearchFlowStore((s) => s.specialization);
+  const placeId = useSearchFlowStore((s) => s.placeId);
+  const projectTypes = useSearchFlowStore((s) => s.projectTypes);
+  const selectedDisciplines = useSearchFlowStore((s) => s.disciplines);
+  const selectedSpecializations = useSearchFlowStore((s) => s.specializations);
   const setLocation = useSearchFlowStore((s) => s.setLocation);
-  const setProjectType = useSearchFlowStore((s) => s.setProjectType);
-  const setDiscipline = useSearchFlowStore((s) => s.setDiscipline);
-  const setSpecialization = useSearchFlowStore((s) => s.setSpecialization);
+  const toggleProjectType = useSearchFlowStore((s) => s.toggleProjectType);
+  const toggleDiscipline = useSearchFlowStore((s) => s.toggleDiscipline);
+  const toggleSpecialization = useSearchFlowStore((s) => s.toggleSpecialization);
+  const setProjectTypes = useSearchFlowStore((s) => s.setProjectTypes);
+  const setDisciplines = useSearchFlowStore((s) => s.setDisciplines);
+  const setSpecializations = useSearchFlowStore((s) => s.setSpecializations);
 
   const [query, setQuery] = useState('');
   const [openFilter, setOpenFilter] = useState<FilterKey>(null);
@@ -107,35 +114,34 @@ export function CategorySearchResultsScreen() {
   const locationLabel = getLocationLabel(location) || location;
   const city = locationLabel.split(',')[0]?.trim() || locationLabel || 'Location';
   const disciplines = useMemo(() => getDisciplinesForRole(role), [role]);
+  // Categories offered by the selected types (empty when none picked).
   const specializations = useMemo(
-    () => getSpecializationsForDiscipline(discipline),
-    [discipline],
+    () => selectedDisciplines.flatMap((d) => getSpecializationsForDiscipline(d)),
+    [selectedDisciplines],
   );
 
-  const projectTypeLabel =
-    getOptionLabel(PROJECT_TYPE_OPTIONS, projectType) || 'Project type';
-  const disciplineLabel =
-    getOptionLabel(disciplines, discipline) || `Type of ${roleLabel}`;
-  const categoryLabel =
-    getOptionLabel(specializations, specialization) || 'Category';
+  /** "Residential +2" -- a chip-sized summary of a multi-select. */
+  const summarize = (options: CategoryOption[], ids: string[], fallback: string) => {
+    const first = getOptionLabel(options, ids[0] ?? '');
+    if (!ids.length || !first) return fallback;
+    return ids.length > 1 ? `${first} +${ids.length - 1}` : first;
+  };
+  const projectTypeLabel = summarize(PROJECT_TYPE_OPTIONS, projectTypes, 'Project type');
+  const disciplineLabel = summarize(disciplines, selectedDisciplines, 'Type');
+  const categoryLabel = summarize(specializations, selectedSpecializations, 'Category');
 
   const searchQuery = useQuery({
-    queryKey: [
-      'category-search',
-      role,
-      location,
-      projectType,
-      discipline,
-      specialization,
-    ],
+    queryKey: ['category-search', role, location, placeId, projectTypes, selectedDisciplines, selectedSpecializations],
     enabled: Boolean(role && location),
     queryFn: () =>
       searchApi.category({
         role,
         location,
-        projectType: projectType || undefined,
-        discipline: discipline || undefined,
-        specialization: specialization || undefined,
+        place_id: placeId || undefined,
+        // Comma-joined: axios would send arrays as projectType[]=..., which
+        // the backend doesn't read. It accepts repeated or comma lists.
+        projectType: projectTypes.length ? projectTypes.join(',') : undefined,
+        category: selectedDisciplines.length ? toCategoryParam(selectedDisciplines, selectedSpecializations) : undefined,
         limit: 50,
         page: 1,
       }),
@@ -150,9 +156,9 @@ export function CategorySearchResultsScreen() {
     mutationFn: (recipientId: string | number) => connectionsApi.send(recipientId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['connections'] });
-      Alert.alert('Request sent', 'Connection request sent.');
+      appAlert('Request sent', 'Connection request sent.');
     },
-    onError: (error) => Alert.alert('Error', getErrorMessage(error)),
+    onError: (error) => alertApiError(error),
   });
 
   const results = searchQuery.data?.results ?? [];
@@ -214,30 +220,32 @@ export function CategorySearchResultsScreen() {
             ? specializations
             : [];
 
-  const sheetSelectedId =
+  const sheetSelected: string[] =
     openFilter === 'location'
-      ? location
+      ? [location]
       : openFilter === 'projectType'
-        ? projectType
+        ? projectTypes
         : openFilter === 'discipline'
-          ? discipline
+          ? selectedDisciplines
           : openFilter === 'category'
-            ? specialization
-            : '';
+            ? selectedSpecializations
+            : [];
 
+  // Location is single-choice (closes the sheet); the rest toggle and the
+  // results update live behind the sheet.
   const onPickOption = (id: string) => {
-    if (openFilter === 'location') setLocation(id);
-    else if (openFilter === 'projectType') setProjectType(id);
-    else if (openFilter === 'discipline') setDiscipline(id);
-    else if (openFilter === 'category') setSpecialization(id);
-    setOpenFilter(null);
+    if (openFilter === 'location') {
+      setLocation(id, id);
+      setOpenFilter(null);
+    } else if (openFilter === 'projectType') toggleProjectType(id);
+    else if (openFilter === 'discipline') toggleDiscipline(id);
+    else if (openFilter === 'category') toggleSpecialization(id);
   };
 
   const clearSheetSelection = () => {
-    if (openFilter === 'projectType') setProjectType('');
-    else if (openFilter === 'discipline') setDiscipline('');
-    else if (openFilter === 'category') setSpecialization('');
-    setOpenFilter(null);
+    if (openFilter === 'projectType') setProjectTypes([]);
+    else if (openFilter === 'discipline') setDisciplines([]);
+    else if (openFilter === 'category') setSpecializations([]);
   };
 
   if (!role || !location) {
@@ -288,19 +296,19 @@ export function CategorySearchResultsScreen() {
             onPress={() => setOpenFilter('location')}
           />
           <FilterChip
-            label={projectType ? projectTypeLabel : 'Project type'}
-            active={Boolean(projectType)}
+            label={projectTypeLabel}
+            active={projectTypes.length > 0}
             onPress={() => setOpenFilter('projectType')}
           />
           <FilterChip
-            label={discipline ? disciplineLabel : 'Type'}
-            active={Boolean(discipline)}
+            label={disciplineLabel}
+            active={selectedDisciplines.length > 0}
             onPress={() => setOpenFilter('discipline')}
           />
-          {specializations.length > 0 || specialization ? (
+          {specializations.length > 0 ? (
             <FilterChip
-              label={specialization ? categoryLabel : 'Category'}
-              active={Boolean(specialization)}
+              label={categoryLabel}
+              active={selectedSpecializations.length > 0}
               onPress={() => setOpenFilter('category')}
             />
           ) : null}
@@ -327,7 +335,7 @@ export function CategorySearchResultsScreen() {
       </View>
 
       {searchQuery.isLoading ? (
-        <LoadingState />
+        <ListSkeleton />
       ) : searchQuery.isError ? (
         <ErrorState
           title="Search failed"
@@ -372,14 +380,21 @@ export function CategorySearchResultsScreen() {
       <BottomSheet
         visible={openFilter != null}
         title={sheetTitle}
-        subtitle="Tap an option to update results."
+        subtitle={openFilter === 'location' ? 'Tap a location to update results.' : 'Select one or more -- results update as you go.'}
         onClose={() => setOpenFilter(null)}
         tall
         footer={
-          openFilter !== 'location' && sheetSelectedId ? (
-            <Pressable style={styles.clearBtn} onPress={clearSheetSelection}>
-              <Text style={styles.clearBtnText}>Clear filter</Text>
-            </Pressable>
+          openFilter && openFilter !== 'location' ? (
+            <View style={styles.sheetFooter}>
+              {sheetSelected.length ? (
+                <Pressable style={[styles.clearBtn, styles.sheetFooterBtn]} onPress={clearSheetSelection}>
+                  <Text style={styles.clearBtnText}>Clear</Text>
+                </Pressable>
+              ) : null}
+              <Pressable style={[styles.doneBtn, styles.sheetFooterBtn]} onPress={() => setOpenFilter(null)}>
+                <Text style={styles.doneBtnText}>Done{sheetSelected.length ? ` (${sheetSelected.length})` : ''}</Text>
+              </Pressable>
+            </View>
           ) : null
         }
       >
@@ -387,7 +402,7 @@ export function CategorySearchResultsScreen() {
           <OptionRow
             key={opt.id}
             label={opt.label}
-            active={opt.id === sheetSelectedId}
+            active={sheetSelected.includes(opt.id)}
             onPress={() => onPickOption(opt.id)}
           />
         ))}
@@ -443,7 +458,7 @@ function ResultCard({
     (Array.isArray(item.firmLocationIds)
       ? String(item.firmLocationIds[0] ?? '')
       : '');
-  const locLabel = loc ? getLocationLabel(loc) || loc : '';
+  const locLabel = usePlaceLabel(loc);
 
   const rating =
     typeof item.rating === 'number'
@@ -528,6 +543,16 @@ function ResultCard({
 }
 
 const styles = StyleSheet.create({
+  sheetFooter: { flexDirection: 'row', gap: 10 },
+  sheetFooterBtn: { flex: 1 },
+  doneBtn: {
+    minHeight: 46,
+    borderRadius: radius.full,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  doneBtnText: { fontFamily: typography.fontFamily.semibold, fontSize: 15, color: colors.white },
   safe: { flex: 1, backgroundColor: colors.white },
   topBar: {
     flexDirection: 'row',

@@ -1,69 +1,73 @@
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { formatMonthYear } from '@/src/features/profile/profileFormat';
 import { ProfileSectionCard } from '@/src/features/profile/ProfileSectionCard';
-import { SkillsDiamondRow } from '@/src/features/profile/SkillsDiamondRow';
-import type { Certification, ProfessionalProfile } from '@/src/types/api';
+import { formatMonthYear, issuerLabel } from '@/src/features/credentials/credentialLogic';
+import type { Credential } from '@/src/api/credentials';
+import type { ProfessionalProfile } from '@/src/types/api';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
+import { openInApp } from '@/src/utils/openInApp';
 const LINKEDIN_BLUE = '#0A66C2';
-const PREVIEW_COUNT = 2;
+const PREVIEW_COUNT = 3;
 
-export function parseCertifications(profile?: ProfessionalProfile | null): Certification[] {
-  const raw = profile?.certifications;
-  if (!Array.isArray(raw)) return [];
-
-  const items: Certification[] = [];
-  for (const item of raw) {
-    if (!item || typeof item !== 'object') continue;
-    const cert = item as Certification;
-    const name = String(cert.name ?? cert.title ?? '').trim();
-    if (!name) continue;
-    items.push({
-      ...cert,
-      name,
-      issuer: cert.issuer ? String(cert.issuer) : undefined,
-    });
-  }
-  return items;
+/** Licences first, then certifications -- the shape the backend embeds in
+ *  every profile response (`licenses` + `certifications`). */
+export function parseCredentials(profile?: ProfessionalProfile | null): Credential[] {
+  const licenses = Array.isArray(profile?.licenses) ? profile.licenses : [];
+  const certifications = Array.isArray(profile?.certifications) ? profile.certifications : [];
+  return [...licenses, ...certifications].filter((c) => c && typeof c === 'object' && (c.name || c.issuerName));
 }
 
-function CertificationRow({
-  cert,
-  skills,
-}: {
-  cert: Certification;
-  skills: string[];
-}) {
-  const issued = formatMonthYear(cert.issuedDate ?? cert.issueDate);
-  const certSkills = Array.isArray(cert.skills)
-    ? cert.skills.map(String)
-    : skills.slice(0, 2);
+function CredentialRow({ cred }: { cred: Credential }) {
+  const isLicense = cred.kind === 'LICENSE';
+  const title = cred.name || issuerLabel(cred);
+  const issuer = cred.name ? issuerLabel(cred) : '';
+  const issued = formatMonthYear(cred.issueDate) || (cred.issueYear ? String(cred.issueYear) : '');
+  const expires = formatMonthYear(cred.expiryDate);
 
   return (
     <View style={styles.row}>
       <View style={styles.logo}>
-        <Ionicons name="ribbon-outline" size={22} color={LINKEDIN_BLUE} />
+        <Ionicons name={isLicense ? 'shield-checkmark-outline' : 'ribbon-outline'} size={22} color={LINKEDIN_BLUE} />
       </View>
       <View style={styles.copy}>
-        <Text style={styles.title}>{cert.name}</Text>
-        {cert.issuer ? <Text style={styles.issuer}>{cert.issuer}</Text> : null}
-        {issued ? <Text style={styles.meta}>Issued {issued}</Text> : null}
-        {cert.credentialId ? (
-          <Text style={styles.meta}>Credential ID {cert.credentialId}</Text>
+        <Text style={styles.title}>{title}</Text>
+        {issuer ? <Text style={styles.issuer}>{issuer}</Text> : null}
+        {issued || expires ? (
+          <Text style={styles.meta}>
+            {issued ? `Issued ${issued}` : ''}
+            {issued && (expires || cred.expired) ? ' · ' : ''}
+            {cred.expired ? 'Expired' : expires ? `Expires ${expires}` : ''}
+          </Text>
+        ) : null}
+        {cred.credentialNumber ? (
+          <Text style={styles.meta}>
+            {isLicense ? 'Reg. no.' : 'Credential ID'} {cred.credentialNumber}
+          </Text>
         ) : null}
 
-        {cert.credentialUrl ? (
-          <Pressable
-            style={styles.credentialBtn}
-            onPress={() => Linking.openURL(String(cert.credentialUrl))}
-          >
-            <Text style={styles.credentialText}>Show credential</Text>
-            <Ionicons name="open-outline" size={14} color={colors.textSecondary} />
-          </Pressable>
-        ) : null}
-
-        <SkillsDiamondRow skills={certSkills} />
+        <View style={styles.links}>
+          {cred.credentialUrl ? (
+            <Pressable
+              accessibilityRole="link"
+              style={styles.credentialBtn}
+              onPress={() => openInApp(cred.credentialUrl)}
+            >
+              <Text style={styles.credentialText}>Show credential</Text>
+              <Ionicons name="open-outline" size={14} color={colors.textSecondary} />
+            </Pressable>
+          ) : null}
+          {cred.documentUrl ? (
+            <Pressable
+              accessibilityRole="link"
+              style={styles.credentialBtn}
+              onPress={() => openInApp(cred.documentUrl, cred.name)}
+            >
+              <Text style={styles.credentialText}>View certificate</Text>
+              <Ionicons name="document-outline" size={14} color={colors.textSecondary} />
+            </Pressable>
+          ) : null}
+        </View>
       </View>
     </View>
   );
@@ -71,23 +75,20 @@ function CertificationRow({
 
 type Props = {
   profile?: ProfessionalProfile | null;
-  fallbackSkills?: string[];
+  /** Omit on someone else's profile (read-only). */
   onEdit?: () => void;
 };
 
-export function ProfileCertificationsSection({
-  profile,
-  fallbackSkills = [],
-  onEdit,
-}: Props) {
-  const certifications = parseCertifications(profile);
-  const preview = certifications.slice(0, PREVIEW_COUNT);
+export function ProfileCertificationsSection({ profile, onEdit }: Props) {
+  const credentials = parseCredentials(profile);
+  const preview = credentials.slice(0, PREVIEW_COUNT);
 
-  if (!certifications.length) {
+  if (!credentials.length) {
+    if (!onEdit) return null;
     return (
       <ProfileSectionCard title="Licenses & certifications" onAdd={onEdit} onEdit={onEdit}>
         <Text style={styles.empty}>
-          Add licenses and certifications when your profile includes them.
+          Add your licenses, registrations and professional certificates to build trust and get verified.
         </Text>
       </ProfileSectionCard>
     );
@@ -95,20 +96,18 @@ export function ProfileCertificationsSection({
 
   return (
     <ProfileSectionCard
-      title={`Licenses & certifications (${certifications.length})`}
+      title={`Licenses & certifications (${credentials.length})`}
       onAdd={onEdit}
       onEdit={onEdit}
       footer={
-        certifications.length > PREVIEW_COUNT
-          ? `Show all ${certifications.length} licenses`
-          : undefined
+        credentials.length > PREVIEW_COUNT && onEdit ? `Show all ${credentials.length}` : undefined
       }
       onFooterPress={onEdit}
     >
-      {preview.map((cert, index) => (
-        <View key={`${cert.name}-${index}`}>
-          <CertificationRow cert={cert} skills={fallbackSkills} />
-          {index < preview.length - 1 ? <View style={styles.divider} /> : null}
+      {(onEdit ? preview : credentials).map((cred, index, list) => (
+        <View key={`${cred.kind}-${cred.id}`}>
+          <CredentialRow cred={cred} />
+          {index < list.length - 1 ? <View style={styles.divider} /> : null}
         </View>
       ))}
     </ProfileSectionCard>
@@ -149,6 +148,7 @@ const styles = StyleSheet.create({
     fontSize: typography.size.sm,
     color: colors.textSecondary,
   },
+  links: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   credentialBtn: {
     marginTop: spacing.sm,
     alignSelf: 'flex-start',

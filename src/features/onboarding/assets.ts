@@ -1,6 +1,6 @@
 import { Image, ImageSourcePropType } from 'react-native';
 
-export const brandLogo: ImageSourcePropType = require('../../../assets/images/COBILDS_Icon_Transparent.webp');
+export const brandLogo: ImageSourcePropType = require('../../../assets/images/cobilds-mark.png');
 export const onboardingHero: ImageSourcePropType = require('../../../assets/images/Onboarding/onboarding-hero.webp');
 export const onboardingVendors: ImageSourcePropType = require('../../../assets/images/Onboarding/onboardimg2.webp');
 export const onboardingFeed: ImageSourcePropType = require('../../../assets/images/Onboarding/onboardimg3.webp');

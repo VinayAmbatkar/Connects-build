@@ -1,18 +1,20 @@
 import { useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Avatar } from '@/src/components/Avatar';
-import { LoadingState, ErrorState } from '@/src/components/EmptyState';
+import { ErrorState } from '@/src/components/EmptyState';
 import { connectionsApi } from '@/src/api/connections';
 import { eventsApi } from '@/src/api/events';
 import { getErrorMessage } from '@/src/api/client';
 import { profileApi } from '@/src/api/profile';
 import { projectsApi } from '@/src/api/projects';
 import { ProfileActivitySection } from '@/src/features/profile/ProfileActivitySection';
+import { ProfileInsightsCard } from '@/src/features/profile/ProfileInsightsCard';
+import { shareMyProfile } from '@/src/features/profile/shareProfile';
 import { ProfileCertificationsSection } from '@/src/features/profile/ProfileCertificationsSection';
 import {
   ProfileContentTabs,
@@ -35,9 +37,11 @@ import {
 } from '@/src/features/profile/profileOptions';
 import { formatAboutPreview } from '@/src/features/profile/profileFormat';
 import { useAuthStore } from '@/src/store/authStore';
-import type { ProfessionalProfile } from '@/src/types/api';
+
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
+import { usePlaceLabels } from '@/src/hooks/usePlaceLabels';
+import { ProfileSkeleton } from '@/src/components/Skeleton';
 const LINKEDIN_BLUE = '#0A66C2';
 const VERIFY_BLUE = '#1E3A8A';
 
@@ -49,9 +53,6 @@ function ExperienceIcon() {
   );
 }
 
-function buildLocation(profile?: ProfessionalProfile | null) {
-  return profile?.serviceLocations?.filter(Boolean).join(', ');
-}
 
 export function MyProfileScreen() {
   const user = useAuthStore((s) => s.user);
@@ -96,7 +97,15 @@ export function MyProfileScreen() {
     }
   };
 
-  if (profileQuery.isLoading) return <LoadingState />;
+  // Firm first, then service locations -- stored as Google place IDs,
+  // location codes or typed text; usePlaceLabels makes them all readable
+  // (this used to print the raw place ID).
+  const locationLabels = usePlaceLabels([
+    ...((profileQuery.data?.firmLocationIds ?? []) as string[]),
+    ...((profileQuery.data?.serviceLocations ?? []) as string[]),
+  ]);
+
+  if (profileQuery.isLoading) return <ProfileSkeleton />;
 
   if (profileQuery.isError) {
     return (
@@ -120,7 +129,7 @@ export function MyProfileScreen() {
     user?.role ??
     '';
   const company = profile?.company?.trim();
-  const location = buildLocation(profile);
+  const location = locationLabels.slice(0, 2).join(', ');
   const connectionCount = connectionsQuery.data?.count;
   const bio = profile?.bio?.trim();
   const aboutPreview = bio ? formatAboutPreview(bio) : null;
@@ -174,9 +183,19 @@ export function MyProfileScreen() {
             <View style={styles.avatarBorder}>
               <Avatar name={profile?.fullName ?? user?.fullName ?? 'You'} size={88} />
             </View>
-            <Pressable style={styles.editProfileBtn} onPress={openEdit}>
-              <Text style={styles.editProfileText}>Edit profile</Text>
-            </Pressable>
+            <View style={styles.headerActions}>
+              <Pressable
+                style={styles.editProfileBtn}
+                onPress={() => void shareMyProfile(profile?.fullName)}
+                accessibilityRole="button"
+                accessibilityLabel="Share profile"
+              >
+                <Ionicons name="share-social-outline" size={16} color={LINKEDIN_BLUE} />
+              </Pressable>
+              <Pressable style={styles.editProfileBtn} onPress={openEdit}>
+                <Text style={styles.editProfileText}>Edit profile</Text>
+              </Pressable>
+            </View>
           </View>
 
           <Text style={styles.name}>
@@ -216,6 +235,7 @@ export function MyProfileScreen() {
                   onPress={() => router.push('/verification')}
                 />
               )}
+              <ProfileInsightsCard />
               <View style={styles.aboutCard}>
                 <View style={styles.aboutHeader}>
                   <Text style={styles.aboutTitle}>About</Text>
@@ -273,8 +293,7 @@ export function MyProfileScreen() {
 
               <ProfileCertificationsSection
                 profile={profile}
-                fallbackSkills={topSkills}
-                onEdit={openEdit}
+                onEdit={() => router.push('/credentials' as Href)}
               />
             </>
           ) : null}
@@ -306,6 +325,7 @@ export function MyProfileScreen() {
 const PROFILE_BG = '#F3F2EF';
 
 const styles = StyleSheet.create({
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   safe: { flex: 1, backgroundColor: PROFILE_BG },
   topBar: {
     flexDirection: 'row',

@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Dimensions,
   Image,
   KeyboardAvoidingView,
@@ -20,11 +19,13 @@ import { authApi } from '@/src/api/auth';
 import { getErrorMessage } from '@/src/api/client';
 import { OtpInput } from '@/src/components/OtpInput';
 import { SignupAccountFooter } from '@/src/components/SignupAccountFooter';
+import { BrandTaglineFooter } from '@/src/components/BrandTaglineFooter';
 import { StepProgress } from '@/src/components/StepProgress';
 import { BrandHeader } from '@/src/features/onboarding/BrandHeader';
 import { useSignupStore } from '@/src/store/signupStore';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
+import { appAlert } from '@/src/components/AppDialog';
 const signupHero = require('../../../assets/images/Onboarding/loginimg-bg.webp');
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BRAND = '#F57D01';
@@ -40,15 +41,15 @@ export default function SignupOtpScreen() {
 
   const resendOtp = async () => {
     if (!draft.email.trim()) {
-      Alert.alert('Missing email', 'Go back and enter your email address.');
+      appAlert('Missing email', 'Go back and enter your email address.');
       return;
     }
     setResending(true);
     try {
       await authApi.sendEmailOtp(draft.email.trim());
-      Alert.alert('OTP sent', 'A new verification code has been sent to your email.');
+      appAlert('OTP sent', 'A new verification code has been sent to your email.');
     } catch (error) {
-      Alert.alert('Could not resend OTP', getErrorMessage(error));
+      appAlert('Could not resend OTP', getErrorMessage(error));
     } finally {
       setResending(false);
     }
@@ -56,7 +57,7 @@ export default function SignupOtpScreen() {
 
   const verifyEmail = async () => {
     if (code.length < 6) {
-      Alert.alert('Enter OTP', 'Please enter the 6-digit code.');
+      appAlert('Enter OTP', 'Please enter the 6-digit code.');
       return;
     }
     setLoading(true);
@@ -66,7 +67,7 @@ export default function SignupOtpScreen() {
       reset();
       router.replace('/(auth)/signup-success');
     } catch (error) {
-      Alert.alert('Verification failed', getErrorMessage(error));
+      appAlert('Verification failed', getErrorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -152,38 +153,41 @@ export default function SignupOtpScreen() {
               )}
             </Pressable>
 
-            <View style={styles.footer}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Go back"
-                onPress={() => router.back()}
-                style={({ pressed }) => [styles.backCircle, pressed && styles.pressed]}
-              >
-                <Ionicons name="chevron-back" size={24} color={BRAND} />
-              </Pressable>
+            <View style={styles.bottomGroup}>
+              <View style={styles.footer}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Go back"
+                  onPress={() => router.back()}
+                  style={({ pressed }) => [styles.backCircle, pressed && styles.pressed]}
+                >
+                  <Ionicons name="chevron-back" size={24} color={BRAND} />
+                </Pressable>
 
-              <Pressable
-                accessibilityRole="button"
-                onPress={verifyEmail}
-                disabled={loading}
-                style={({ pressed }) => [
-                  styles.submitBtn,
-                  pressed && styles.pressed,
-                  loading && styles.submitDisabled,
-                ]}
-              >
-                {loading ? (
-                  <ActivityIndicator color={colors.white} />
-                ) : (
-                  <>
-                    <Text style={styles.submitText}>Verify Email</Text>
-                    <Ionicons name="arrow-forward" size={18} color={colors.white} />
-                  </>
-                )}
-              </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={verifyEmail}
+                  disabled={loading}
+                  style={({ pressed }) => [
+                    styles.submitBtn,
+                    pressed && styles.pressed,
+                    loading && styles.submitDisabled,
+                  ]}
+                >
+                  {loading ? (
+                    <ActivityIndicator color={colors.white} />
+                  ) : (
+                    <>
+                      <Text style={styles.submitText}>Verify Email</Text>
+                      <Ionicons name="arrow-forward" size={18} color={colors.white} />
+                    </>
+                  )}
+                </Pressable>
+              </View>
+
+              <SignupAccountFooter />
+              <BrandTaglineFooter />
             </View>
-
-            <SignupAccountFooter />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -254,6 +258,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   body: {
+    flexGrow: 1,
     paddingHorizontal: spacing.lg,
     marginTop: spacing.sm,
   },
@@ -299,6 +304,10 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.semibold,
     fontSize: typography.size.sm,
     color: BRAND,
+  },
+  bottomGroup: {
+    marginTop: 'auto',
+    gap: spacing.md,
   },
   footer: {
     marginTop: spacing.md,

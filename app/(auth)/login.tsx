@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Dimensions,
   Image,
   KeyboardAvoidingView,
@@ -24,6 +23,7 @@ import { useAuthActions } from '@/src/hooks/useAuthActions';
 import { usePrefsStore } from '@/src/store/prefsStore';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
+import { appAlert } from '@/src/components/AppDialog';
 const loginHero = require('../../assets/images/Onboarding/loginimg-bg.webp');
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BRAND = '#F57D01';
@@ -47,7 +47,7 @@ export default function LoginScreen() {
 
   const onSubmit = async () => {
     if (!email.trim() || !password) {
-      Alert.alert('Missing info', 'Enter email and password.');
+      appAlert('Missing info', 'Enter email and password.');
       return;
     }
     setLoading(true);
@@ -55,7 +55,7 @@ export default function LoginScreen() {
       await login(email, password);
       goHome();
     } catch (error) {
-      Alert.alert('Login failed', getErrorMessage(error));
+      appAlert('Login failed', getErrorMessage(error));
     } finally {
       setLoading(false);
     }

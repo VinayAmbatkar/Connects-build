@@ -1,13 +1,15 @@
-import { Alert, FlatList, StyleSheet, Text, View } from 'react-native';
+import { FlatList, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/src/components/Button';
-import { EmptyState, LoadingState } from '@/src/components/EmptyState';
+import { EmptyState } from '@/src/components/EmptyState';
 import { getErrorMessage } from '@/src/api/client';
 import { portfolioApi } from '@/src/api/portfolio';
 import { useAuthStore } from '@/src/store/authStore';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
+import { appAlert } from '@/src/components/AppDialog';
+import { ListSkeleton } from '@/src/components/Skeleton';
 export default function PortfolioScreen() {
   const user = useAuthStore((s) => s.user);
   const userId = user?.id;
@@ -43,11 +45,11 @@ export default function PortfolioScreen() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['portfolio', userId] });
-      Alert.alert('Uploaded', 'Portfolio photo added.');
+      appAlert('Uploaded', 'Portfolio photo added.');
     },
     onError: (error) => {
       if (getErrorMessage(error) !== 'No image selected') {
-        Alert.alert('Upload failed', getErrorMessage(error));
+        appAlert('Upload failed', getErrorMessage(error));
       }
     },
   });
@@ -56,7 +58,7 @@ export default function PortfolioScreen() {
     return <EmptyState title="Sign in required" message="Log in to manage portfolio photos." />;
   }
 
-  if (listQuery.isLoading) return <LoadingState />;
+  if (listQuery.isLoading) return <ListSkeleton />;
 
   const data = Array.isArray(listQuery.data)
     ? listQuery.data

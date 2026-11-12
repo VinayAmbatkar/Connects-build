@@ -19,6 +19,10 @@ const HERO_COPY: Record<KycFlow, { title: string; body: string }> = {
     title: 'Get your verified badge',
     body: 'Verify your identity with Aadhaar, then confirm your company work email.',
   },
+  consultant: {
+    title: 'Get your verified badge',
+    body: 'Verify your identity with Aadhaar, then submit your professional licence for review.',
+  },
 };
 
 export function KycHero({

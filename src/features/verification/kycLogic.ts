@@ -12,10 +12,12 @@ import type {
  *  - individual: Aadhaar OKYC only (Consumer, Others, no role yet)
  *  - business:   Aadhaar, then GST registration (TrueID)
  *  - employee:   Aadhaar, then company work-email OTP
+ *  - consultant: Aadhaar, then licence + proof of consultancy (admin review)
+ *                -- Individual Consultants have no GSTIN or company email
  */
-export type KycFlow = 'individual' | 'business' | 'employee';
+export type KycFlow = 'individual' | 'business' | 'employee' | 'consultant';
 
-export type KycStepKey = 'identity' | 'business' | 'workEmail' | 'badge';
+export type KycStepKey = 'identity' | 'business' | 'workEmail' | 'licence' | 'badge';
 
 export const AADHAAR_LENGTH = 12;
 export const OTP_LENGTH = 6;
@@ -28,8 +30,9 @@ export const AADHAAR_DETAILS_MISMATCH = 'AADHAAR_DETAILS_MISMATCH';
 const GSTIN_PATTERN = /^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z0-9]Z[A-Z0-9]$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** Builders are always business owners; these roles choose Business Owner
- *  or Employee (see validateEmploymentType on the backend). */
+/** Builders are always business owners; these roles choose Business Owner,
+ *  Employee or Individual Consultant (see validateEmploymentType on the
+ *  backend). */
 const EMPLOYMENT_TYPE_ROLES = new Set(['CONSULTANTS', 'CONTRACTORS', 'VENDORS']);
 const BUILDER_ROLES = new Set(['BUILDERS', 'BUILDERS_CONTRACTORS']);
 
@@ -42,7 +45,10 @@ export function resolveKycFlow(role?: string | null, employmentType?: string | n
   const normalized = normalizeRole(role);
   if (BUILDER_ROLES.has(normalized)) return 'business';
   if (EMPLOYMENT_TYPE_ROLES.has(normalized)) {
-    return (employmentType ?? '').toUpperCase() === 'EMPLOYEE' ? 'employee' : 'business';
+    const type = (employmentType ?? '').toUpperCase();
+    if (type === 'EMPLOYEE') return 'employee';
+    if (type === 'INDIVIDUAL_CONSULTANT') return 'consultant';
+    return 'business';
   }
   return 'individual';
 }
@@ -50,6 +56,7 @@ export function resolveKycFlow(role?: string | null, employmentType?: string | n
 export function stepsForFlow(flow: KycFlow): KycStepKey[] {
   if (flow === 'business') return ['identity', 'business', 'badge'];
   if (flow === 'employee') return ['identity', 'workEmail'];
+  if (flow === 'consultant') return ['identity', 'licence'];
   return ['identity'];
 }
 
@@ -57,6 +64,7 @@ export const STEP_LABELS: Record<KycStepKey, string> = {
   identity: 'Identity',
   business: 'Business',
   workEmail: 'Work email',
+  licence: 'Licence',
   badge: 'Badge',
 };
 
@@ -195,6 +203,20 @@ export function isWorkEmailVerified(status?: VerificationStatusResponse | null, 
   return record.email.trim().toLowerCase() === email.trim().toLowerCase();
 }
 
+/** The Individual Consultant licence review, if one was ever submitted. */
+export function consultantReviewStatus(
+  status?: VerificationStatusResponse | null,
+): 'NONE' | 'PENDING' | 'APPROVED' | 'REJECTED' {
+  return status?.individualConsultant?.status ?? 'NONE';
+}
+
+export function isConsultantApproved(status?: VerificationStatusResponse | null): boolean {
+  return consultantReviewStatus(status) === 'APPROVED';
+}
+
+export const MAX_VERIFICATION_DOCUMENTS = 5;
+export const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
+
 export const GST_MESSAGES = {
   invalid: "Enter your company's legal name and a valid 15-character GSTIN.",
   mismatch:
@@ -225,35 +247,39 @@ export function gstErrorMessage(error: KycApiError): string {
   return error.status ? error.message : GST_MESSAGES.unavailable;
 }
 
+export type KycDone = { aadhaar: boolean; gst: boolean; workEmail: boolean; licence?: boolean };
+
 /** Which step the user is on (1-based) given what is already verified. */
 export function currentStepIndex(
   flow: KycFlow,
-  done: { aadhaar: boolean; gst: boolean; workEmail: boolean },
+  done: KycDone,
 ): number {
   if (!done.aadhaar) return 0;
   if (flow === 'business') return done.gst ? 2 : 1;
   if (flow === 'employee') return done.workEmail ? 2 : 1;
+  if (flow === 'consultant') return done.licence ? 2 : 1;
   return 1;
 }
 
 export function isFlowComplete(
   flow: KycFlow,
-  done: { aadhaar: boolean; gst: boolean; workEmail: boolean },
+  done: KycDone,
 ): boolean {
   if (flow === 'business') return done.aadhaar && done.gst;
   if (flow === 'employee') return done.aadhaar && done.workEmail;
+  if (flow === 'consultant') return done.aadhaar && done.licence === true;
   return done.aadhaar;
 }
 
 // ── Profile badge / promo card ───────────────────────────────────────────
 
 /** The steps a user actually acts on (the badge itself is not a step). */
-export type KycActionStep = 'identity' | 'business' | 'workEmail';
+export type KycActionStep = 'identity' | 'business' | 'workEmail' | 'licence';
 
 export type KycProgress = {
   flow: KycFlow;
   identityDone: boolean;
-  /** Business (GST) or work email -- always true for the individual flow. */
+  /** Business (GST), work email or licence review -- always true for the individual flow. */
   secondDone: boolean;
   /** Fully verified for this flow: the only state that earns the blue tick. */
   complete: boolean;
@@ -273,10 +299,17 @@ export function getKycProgress(
 ): KycProgress {
   const identityDone = profileVerified || isAadhaarApproved(status);
   const secondDone =
-    flow === 'business' ? isGstVerified(status) : flow === 'employee' ? isWorkEmailVerified(status) : true;
+    flow === 'business'
+      ? isGstVerified(status)
+      : flow === 'employee'
+        ? isWorkEmailVerified(status)
+        : flow === 'consultant'
+          ? isConsultantApproved(status)
+          : true;
   const remaining: KycActionStep[] = [];
   if (!identityDone) remaining.push('identity');
   if (flow === 'business' && !secondDone) remaining.push('business');
   if (flow === 'employee' && !secondDone) remaining.push('workEmail');
+  if (flow === 'consultant' && !secondDone) remaining.push('licence');
   return { flow, identityDone, secondDone, complete: remaining.length === 0, remaining };
 }

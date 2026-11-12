@@ -1,13 +1,16 @@
+import { alertApiError } from '@/src/features/billing/featureLocked';
 import { useState } from 'react';
-import { Alert, FlatList, StyleSheet, Text, View } from 'react-native';
+import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/src/components/Button';
-import { EmptyState, LoadingState } from '@/src/components/EmptyState';
+import { EmptyState } from '@/src/components/EmptyState';
 import { TextField } from '@/src/components/TextField';
 import { getErrorMessage } from '@/src/api/client';
 import { supportApi } from '@/src/api/support';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
+import { appAlert } from '@/src/components/AppDialog';
+import { ListSkeleton } from '@/src/components/Skeleton';
 export default function SupportScreen() {
   const [type, setType] = useState('bug');
   const [subject, setSubject] = useState('');
@@ -30,12 +33,12 @@ export default function SupportScreen() {
       setSubject('');
       setDescription('');
       void queryClient.invalidateQueries({ queryKey: ['support-cases'] });
-      Alert.alert('Submitted', 'Your support case was created.');
+      appAlert('Submitted', 'Your support case was created.');
     },
-    onError: (error) => Alert.alert('Error', getErrorMessage(error)),
+    onError: (error) => alertApiError(error),
   });
 
-  if (listQuery.isLoading) return <LoadingState />;
+  if (listQuery.isLoading) return <ListSkeleton />;
   const data = Array.isArray(listQuery.data) ? listQuery.data : [];
 
   return (
@@ -56,7 +59,7 @@ export default function SupportScreen() {
           loading={createMutation.isPending}
           onPress={() => {
             if (!subject.trim() || !description.trim()) {
-              Alert.alert('Missing info', 'Subject and description are required.');
+              appAlert('Missing info', 'Subject and description are required.');
               return;
             }
             createMutation.mutate();

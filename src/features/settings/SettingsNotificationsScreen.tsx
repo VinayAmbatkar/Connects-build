@@ -1,10 +1,12 @@
+import { alertApiError } from '@/src/features/billing/featureLocked';
 import { Alert, StyleSheet, Switch, Text, View } from 'react-native';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { LoadingState } from '@/src/components/EmptyState';
+
 import { accountApi } from '@/src/api/account';
 import { getErrorMessage } from '@/src/api/client';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
+import { DetailSkeleton } from '@/src/components/Skeleton';
 export function SettingsNotificationsScreen() {
   const queryClient = useQueryClient();
   const generalQuery = useQuery({
@@ -16,10 +18,10 @@ export function SettingsNotificationsScreen() {
     mutationFn: (notificationsEnabled: boolean) =>
       accountApi.updateGeneral({ language: 'ENGLISH', notificationsEnabled }),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['general'] }),
-    onError: (error) => Alert.alert('Error', getErrorMessage(error)),
+    onError: (error) => alertApiError(error),
   });
 
-  if (generalQuery.isLoading) return <LoadingState />;
+  if (generalQuery.isLoading) return <DetailSkeleton />;
 
   const enabled = Boolean(
     (generalQuery.data as { notificationsEnabled?: boolean } | undefined)

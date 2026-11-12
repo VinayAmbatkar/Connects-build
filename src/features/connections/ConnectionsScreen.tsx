@@ -1,7 +1,7 @@
+import { alertApiError } from '@/src/features/billing/featureLocked';
 import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -14,14 +14,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Avatar } from '@/src/components/Avatar';
 import { BottomSheet } from '@/src/components/BottomSheet';
-import { EmptyState, LoadingState } from '@/src/components/EmptyState';
+import { EmptyState } from '@/src/components/EmptyState';
 import { connectionsApi } from '@/src/api/connections';
+import { suggestionsApi, type Suggestion } from '@/src/api/social';
 import { getErrorMessage } from '@/src/api/client';
 import { formatRelativeTime } from '@/src/features/profile/profileFormat';
 import type { Connection } from '@/src/types/api';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
-type TabId = 'requested' | 'sent' | 'connections';
+import { ListSkeleton } from '@/src/components/Skeleton';
+type TabId = 'requested' | 'sent' | 'connections' | 'suggested';
 type SheetKind = 'withdraw' | 'sentMenu' | 'requestMenu' | 'reject' | 'remove' | null;
 
 function statusOf(item: Connection) {
@@ -123,6 +125,27 @@ export function ConnectionsScreen() {
     staleTime: 30_000,
   });
 
+  // "People you may know" -- ranked by mutual connections on the backend.
+  const suggestedQuery = useQuery({
+    queryKey: ['connection-suggestions'],
+    queryFn: () => suggestionsApi.list(1, 30),
+    enabled: tab === 'suggested',
+    staleTime: 60_000,
+  });
+  const [requestedIds, setRequestedIds] = useState<Set<string>>(() => new Set());
+
+  const connectMutation = useMutation({
+    mutationFn: (userId: string) => connectionsApi.send(userId),
+    onMutate: (userId) => setBusyId(userId),
+    onSuccess: (_data, userId) => {
+      setRequestedIds((prev) => new Set(prev).add(userId));
+      void queryClient.invalidateQueries({ queryKey: ['connections-summary'] });
+      void queryClient.invalidateQueries({ queryKey: ['connections', 'sent'] });
+    },
+    onError: (error) => alertApiError(error),
+    onSettled: () => setBusyId(null),
+  });
+
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['connections'] });
     void queryClient.invalidateQueries({ queryKey: ['connections-summary'] });
@@ -133,7 +156,7 @@ export function ConnectionsScreen() {
     mutationFn: connectionsApi.accept,
     onMutate: (id) => setBusyId(id),
     onSuccess: () => invalidate(),
-    onError: (error) => Alert.alert('Error', getErrorMessage(error)),
+    onError: (error) => alertApiError(error),
     onSettled: () => setBusyId(null),
   });
 
@@ -141,7 +164,7 @@ export function ConnectionsScreen() {
     mutationFn: connectionsApi.reject,
     onMutate: (id) => setBusyId(id),
     onSuccess: () => invalidate(),
-    onError: (error) => Alert.alert('Error', getErrorMessage(error)),
+    onError: (error) => alertApiError(error),
     onSettled: () => setBusyId(null),
   });
 
@@ -149,7 +172,7 @@ export function ConnectionsScreen() {
     mutationFn: connectionsApi.remove,
     onMutate: (id) => setBusyId(id),
     onSuccess: () => invalidate(),
-    onError: (error) => Alert.alert('Error', getErrorMessage(error)),
+    onError: (error) => alertApiError(error),
     onSettled: () => setBusyId(null),
   });
 
@@ -177,7 +200,10 @@ export function ConnectionsScreen() {
       ? requestedQuery
       : tab === 'sent'
         ? sentQuery
-        : acceptedQuery;
+        : tab === 'suggested'
+          ? suggestedQuery
+          : acceptedQuery;
+  const suggestions = suggestedQuery.data ?? [];
 
   const openProfile = (item: Connection) => {
     const id = otherPartyId(item);
@@ -242,9 +268,14 @@ export function ConnectionsScreen() {
             onPress={() => setTab('sent')}
           />
           <TopTab
-            label="My connections"
+            label="Connections"
             active={tab === 'connections'}
             onPress={() => setTab('connections')}
+          />
+          <TopTab
+            label="Suggested"
+            active={tab === 'suggested'}
+            onPress={() => setTab('suggested')}
           />
         </View>
 
@@ -257,7 +288,7 @@ export function ConnectionsScreen() {
               }
             />
             {requestedQuery.isLoading ? (
-              <LoadingState />
+              <ListSkeleton />
             ) : requestedQuery.isError ? (
               <EmptyState
                 title="Could not load requests"
@@ -292,7 +323,7 @@ export function ConnectionsScreen() {
               count={sentQuery.isLoading ? undefined : sent.length}
             />
             {sentQuery.isLoading ? (
-              <LoadingState />
+              <ListSkeleton />
             ) : sentQuery.isError ? (
               <EmptyState
                 title="Could not load sent requests"
@@ -328,7 +359,7 @@ export function ConnectionsScreen() {
               }
             />
             {acceptedQuery.isLoading ? (
-              <LoadingState />
+              <ListSkeleton />
             ) : acceptedQuery.isError ? (
               <EmptyState
                 title="Could not load connections"
@@ -348,6 +379,36 @@ export function ConnectionsScreen() {
               <EmptyState
                 title="No connections yet"
                 message="Find professionals and send connection requests to grow your network."
+              />
+            )}
+          </>
+        ) : null}
+        {tab === 'suggested' ? (
+          <>
+            <SectionHeader title="People you may know" />
+            {suggestedQuery.isLoading ? (
+              <ListSkeleton />
+            ) : suggestedQuery.isError ? (
+              <EmptyState
+                title="Could not load suggestions"
+                message={getErrorMessage(suggestedQuery.error)}
+              />
+            ) : suggestions.length ? (
+              suggestions.map((item, index) => (
+                <SuggestionRow
+                  key={item.userId}
+                  item={item}
+                  busy={busyId === item.userId}
+                  requested={requestedIds.has(item.userId)}
+                  showDivider={index < suggestions.length - 1}
+                  onPress={() => router.push(`/public-profile/${item.userId}` as Href)}
+                  onConnect={() => connectMutation.mutate(item.userId)}
+                />
+              ))
+            ) : (
+              <EmptyState
+                title="No suggestions yet"
+                message="Complete your role and expertise so we can suggest people in your field."
               />
             )}
           </>
@@ -488,7 +549,14 @@ function TopTab({
   return (
     <Pressable onPress={onPress} style={styles.topTab}>
       <View style={styles.topTabInner}>
-        <Text style={[styles.topTabText, active && styles.topTabTextActive]}>
+        {/* One line always: a wrapped label used to push its tab out of
+            line with the others. */}
+        <Text
+          style={[styles.topTabText, active && styles.topTabTextActive]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.8}
+        >
           {label}
         </Text>
         {badge != null && badge > 0 ? (
@@ -573,6 +641,60 @@ function RequestRow({
             <ActivityIndicator size="small" color={colors.text} />
           ) : (
             <Text style={styles.rejectText}>Reject</Text>
+          )}
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function SuggestionRow({
+  item,
+  busy,
+  requested,
+  showDivider,
+  onPress,
+  onConnect,
+}: {
+  item: Suggestion;
+  busy?: boolean;
+  requested?: boolean;
+  showDivider?: boolean;
+  onPress: () => void;
+  onConnect: () => void;
+}) {
+  const headline = [item.role, item.company || item.location].filter(Boolean).join(' - ');
+  const mutual = item.mutualConnectionCount
+    ? `${item.mutualConnectionCount} mutual connection${item.mutualConnectionCount === 1 ? '' : 's'}`
+    : '';
+
+  return (
+    <View style={[styles.row, showDivider && styles.rowDivider]}>
+      <Pressable onPress={onPress} style={styles.rowTop}>
+        <Avatar name={item.name} size={52} />
+        <View style={styles.rowCopy}>
+          <Text style={styles.rowName}>{item.name}</Text>
+          {headline ? (
+            <Text style={styles.rowHeadline} numberOfLines={1}>
+              {headline}
+            </Text>
+          ) : null}
+          {mutual ? <Text style={styles.rowMeta}>{mutual}</Text> : null}
+        </View>
+      </Pressable>
+      <View style={styles.actions}>
+        <Pressable
+          style={[requested ? styles.rejectBtn : styles.acceptBtn, (busy || requested) && styles.btnDisabled]}
+          onPress={onConnect}
+          disabled={busy || requested}
+          accessibilityRole="button"
+        >
+          {busy ? (
+            <ActivityIndicator size="small" color={colors.white} />
+          ) : (
+            <Text style={requested ? styles.rejectText : styles.acceptText}>
+              {requested ? 'Request sent' : 'Connect'}
+            </Text>
           )}
         </Pressable>
       </View>
@@ -703,10 +825,14 @@ const styles = StyleSheet.create({
   topTabInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    justifyContent: 'center',
+    gap: 4,
     paddingVertical: 10,
+    paddingHorizontal: 2,
+    maxWidth: '100%',
   },
   topTabText: {
+    flexShrink: 1,
     fontFamily: typography.fontFamily.semibold,
     fontSize: 13,
     color: colors.textMuted,

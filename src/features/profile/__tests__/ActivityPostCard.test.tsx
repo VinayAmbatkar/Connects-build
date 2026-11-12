@@ -35,6 +35,16 @@ describe('ActivityPostCard (feed variant)', () => {
     expect(screen.getByText('3h ·')).toBeTruthy();
   });
 
+  it('shows the full uploaded photo in the feed without cropping', async () => {
+    await renderCard(
+      <ActivityPostCard
+        item={{ ...post, photoUrls: ['https://example.com/poster.jpg'] }}
+        variant="feed"
+      />,
+    );
+    expect(screen.getByLabelText('Photo 1 of 1').props.resizeMode).toBe('contain');
+  });
+
   it('summarises engagement above three fixed action labels', async () => {
     await renderCard(<ActivityPostCard item={post} variant="feed" />);
     expect(screen.getByText('120')).toBeTruthy();

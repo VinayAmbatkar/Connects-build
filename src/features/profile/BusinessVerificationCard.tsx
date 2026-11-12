@@ -26,6 +26,10 @@ const INTRO: Record<KycFlow, { title: string; description: string }> = {
     title: 'Get Verified',
     description: 'Verify your identity and company email to build trust and get a verified badge.',
   },
+  consultant: {
+    title: 'Get Verified as a Consultant',
+    description: 'Verify your identity and professional licence to build trust and get a verified badge.',
+  },
 };
 
 const STEP_COPY: Record<KycActionStep, { label: string; cta: string; remainingBody: string }> = {
@@ -44,11 +48,17 @@ const STEP_COPY: Record<KycActionStep, { label: string; cta: string; remainingBo
     cta: 'Verify Work Email',
     remainingBody: 'Your identity is verified. Confirm your company work email to get your verified badge.',
   },
+  licence: {
+    label: 'Submit your professional licence',
+    cta: 'Verify Licence',
+    remainingBody: 'Your identity is verified. Submit your licence and proof of consultancy for review to get your verified badge.',
+  },
 };
 
 function stepsFor(flow: KycFlow): KycActionStep[] {
   if (flow === 'business') return ['identity', 'business'];
   if (flow === 'employee') return ['identity', 'workEmail'];
+  if (flow === 'consultant') return ['identity', 'licence'];
   return ['identity'];
 }
 

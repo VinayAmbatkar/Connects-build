@@ -16,6 +16,10 @@ import { StyleSheet } from 'react-native';
 import { useAuthStore } from '@/src/store/authStore';
 import { usePrefsStore } from '@/src/store/prefsStore';
 import { isNetworkError } from '@/src/api/client';
+import { PushNotificationsBridge } from '@/src/notifications/PushNotificationsBridge';
+import { FreemiumBridge } from '@/src/features/billing/FreemiumPopup';
+import { AppDialogHost } from '@/src/components/AppDialog';
+import { ImageViewerHost } from '@/src/components/ImageViewer';
 import { colors } from '@/src/theme/tokens';
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
@@ -63,6 +67,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={styles.root}>
       <QueryClientProvider client={queryClient}>
         <StatusBar style="dark" />
+        <PushNotificationsBridge />
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
           <Stack.Screen name="index" />
           <Stack.Screen name="(onboarding)" />
@@ -74,11 +79,17 @@ export default function RootLayout() {
           <Stack.Screen name="notifications" options={{ headerShown: true, title: 'Notifications' }} />
           <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="new-message" options={{ headerShown: false }} />
+          <Stack.Screen name="group/[id]" options={{ headerShown: false }} />
+          <Stack.Screen name="group-info/[id]" options={{ headerShown: true, title: 'Group info' }} />
+          <Stack.Screen name="new-group" options={{ headerShown: false }} />
           <Stack.Screen name="public-profile/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="projects/index" options={{ headerShown: true, title: 'My Projects' }} />
           <Stack.Screen name="listings/index" options={{ headerShown: true, title: 'My Listings' }} />
           <Stack.Screen name="portfolio/index" options={{ headerShown: true, title: 'Portfolio' }} />
-          <Stack.Screen name="premium/index" options={{ headerShown: true, title: 'Premium' }} />
+          <Stack.Screen name="premium/index" options={{ headerShown: true, title: 'Plans & billing' }} />
+          <Stack.Screen name="billing/receipt/[id]" options={{ headerShown: true, title: 'Receipt' }} />
+          <Stack.Screen name="credentials/index" options={{ headerShown: true, title: 'Licenses & certifications' }} />
+          <Stack.Screen name="favourites/index" options={{ headerShown: true, title: 'Saved profiles' }} />
           <Stack.Screen name="settings" options={{ headerShown: false }} />
           <Stack.Screen name="support/index" options={{ headerShown: true, title: 'Support' }} />
           <Stack.Screen name="blocks/index" options={{ headerShown: true, title: 'Blocked users' }} />
@@ -96,6 +107,11 @@ export default function RootLayout() {
             options={{ headerShown: false, presentation: 'modal', animation: 'slide_from_bottom' }}
           />
         </Stack>
+        {/* After the Stack so the claim confirmation banner draws on top. */}
+        <FreemiumBridge />
+        {/* Last, so app dialogs (appAlert) draw above everything. */}
+        <ImageViewerHost />
+        <AppDialogHost />
       </QueryClientProvider>
     </GestureHandlerRootView>
   );
