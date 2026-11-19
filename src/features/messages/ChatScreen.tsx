@@ -77,6 +77,7 @@ export function ChatScreen({ conversationId, kind = 'dm' }: Props) {
   const [pending, setPending] = useState<PendingMessage[]>([]);
   const [viewer, setViewer] = useState<{ urls: string[]; index: number } | null>(null);
   const listRef = useRef<FlatList<Message>>(null);
+  const hasScrolledToInitialMessages = useRef(false);
   const bottomInset = Math.max(insets.bottom, spacing.sm);
   const keyboardGap = 0;
 
@@ -349,9 +350,14 @@ export function ChatScreen({ conversationId, kind = 'dm' }: Props) {
   const latestMessageId = messages[messages.length - 1]?.id;
 
   useEffect(() => {
+    hasScrolledToInitialMessages.current = false;
+  }, [conversationId]);
+
+  useEffect(() => {
     if (!messages.length) return;
     requestAnimationFrame(() => {
-      listRef.current?.scrollToEnd({ animated: true });
+      listRef.current?.scrollToEnd({ animated: hasScrolledToInitialMessages.current });
+      hasScrolledToInitialMessages.current = true;
     });
   }, [messages.length, latestMessageId]);
 
@@ -373,14 +379,6 @@ export function ChatScreen({ conversationId, kind = 'dm' }: Props) {
     if (participantId == null) return;
     router.push(`/public-profile/${participantId}` as Href);
   };
-
-  if (messagesQuery.isLoading && !messages.length) {
-    return (
-      <View style={[styles.screen, { paddingTop: insets.top }]}>
-        <ChatSkeleton />
-      </View>
-    );
-  }
 
   return (
     <View style={styles.screen}>
@@ -449,10 +447,14 @@ export function ChatScreen({ conversationId, kind = 'dm' }: Props) {
           messages.length === 0 ? styles.empty : styles.list
         }
         ListEmptyComponent={
-          <EmptyState
-            title="No messages"
-            message={isGroup ? 'Say hello to the group.' : 'Say hello to start the chat.'}
-          />
+          messagesQuery.isLoading ? (
+            <ChatSkeleton />
+          ) : (
+            <EmptyState
+              title="No messages"
+              message={isGroup ? 'Say hello to the group.' : 'Say hello to start the chat.'}
+            />
+          )
         }
         renderItem={({ item, index }) => {
           const mine = String(item.senderId) === String(user?.id);

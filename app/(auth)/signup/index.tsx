@@ -117,7 +117,6 @@ export default function SignupProfileScreen() {
             <View style={styles.heroContent}>
               <BrandHeader showMadeInBharath />
               <Text style={styles.pageTitle}>Sign Up</Text>
-              <Text style={styles.pageSub}>Create your account and get started</Text>
             </View>
           </View>
 
@@ -261,12 +260,6 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     color: colors.text,
     letterSpacing: -0.4,
-  },
-  pageSub: {
-    marginTop: 2,
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 12,
-    color: colors.textSecondary,
   },
   body: {
     paddingHorizontal: spacing.lg,

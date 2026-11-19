@@ -1,5 +1,4 @@
 import { OnboardingFeedSlide } from '@/src/features/onboarding/OnboardingFeedSlide';
-import { OnboardingHeroSlide } from '@/src/features/onboarding/OnboardingHeroSlide';
 import { OnboardingVendorsSlide } from '@/src/features/onboarding/OnboardingVendorsSlide';
 import { OnboardingPagerProvider } from '@/src/features/onboarding/animation/OnboardingPagerContext';
 import { prefetchOnboardingImages } from '@/src/features/onboarding/assets';
@@ -64,18 +63,8 @@ export default function OnboardingScreen() {
                 {...panHandlers}
               >
                 <View style={[styles.page, { width }]}>
-                  <OnboardingHeroSlide
-                    pageIndex={0}
-                    width={width}
-                    height={pageHeight}
-                    onGetStarted={goNext}
-                    onLogin={goLogin}
-                  />
-                </View>
-
-                <View style={[styles.page, { width }]}>
                   <OnboardingVendorsSlide
-                    pageIndex={1}
+                    pageIndex={0}
                     width={width}
                     height={pageHeight}
                     slideCount={TOTAL_STEPS}
@@ -86,7 +75,7 @@ export default function OnboardingScreen() {
 
                 <View style={[styles.page, { width }]}>
                   <OnboardingFeedSlide
-                    pageIndex={2}
+                    pageIndex={1}
                     width={width}
                     height={pageHeight}
                     slideCount={TOTAL_STEPS}

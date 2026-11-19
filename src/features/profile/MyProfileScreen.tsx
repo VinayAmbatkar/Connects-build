@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { usePullToRefresh } from '@/src/hooks/usePullToRefresh';
 import { router, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
@@ -43,7 +44,6 @@ import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 import { usePlaceLabels } from '@/src/hooks/usePlaceLabels';
 import { ProfileSkeleton } from '@/src/components/Skeleton';
 const LINKEDIN_BLUE = '#0A66C2';
-const VERIFY_BLUE = '#1E3A8A';
 
 function ExperienceIcon() {
   return (
@@ -55,6 +55,7 @@ function ExperienceIcon() {
 
 
 export function MyProfileScreen() {
+  const pull = usePullToRefresh();
   const user = useAuthStore((s) => s.user);
   const [contentTab, setContentTab] = useState<ProfileContentTab>('overview');
   const scrollRef = useRef<ScrollView>(null);
@@ -157,12 +158,30 @@ export function MyProfileScreen() {
           <Ionicons name="chevron-back" size={24} color={colors.text} />
         </Pressable>
         <Text style={styles.topTitle}>My Profile</Text>
-        <Pressable onPress={() => router.push('/settings')} hitSlop={10} style={styles.topBtn}>
-          <Ionicons name="settings-outline" size={22} color={colors.text} />
-        </Pressable>
+        <View style={styles.topActions}>
+          <Pressable
+            onPress={() => void shareMyProfile(profile?.fullName)}
+            hitSlop={8}
+            style={styles.topBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Share profile"
+          >
+            <Ionicons name="share-social-outline" size={22} color={colors.text} />
+          </Pressable>
+          <Pressable
+            onPress={() => router.push('/settings')}
+            hitSlop={8}
+            style={styles.topBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Settings"
+          >
+            <Ionicons name="settings-outline" size={22} color={colors.text} />
+          </Pressable>
+        </View>
       </View>
 
       <ScrollView
+        refreshControl={pull.refreshControl}
         ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={styles.content}
@@ -180,45 +199,47 @@ export function MyProfileScreen() {
 
         <View style={styles.profileBlock}>
           <View style={styles.avatarRow}>
-            <View style={styles.avatarBorder}>
-              <Avatar name={profile?.fullName ?? user?.fullName ?? 'You'} size={88} />
-            </View>
-            <View style={styles.headerActions}>
-              <Pressable
-                style={styles.editProfileBtn}
-                onPress={() => void shareMyProfile(profile?.fullName)}
-                accessibilityRole="button"
-                accessibilityLabel="Share profile"
-              >
-                <Ionicons name="share-social-outline" size={16} color={LINKEDIN_BLUE} />
-              </Pressable>
-              <Pressable style={styles.editProfileBtn} onPress={openEdit}>
-                <Text style={styles.editProfileText}>Edit profile</Text>
-              </Pressable>
+            <Pressable
+              onPress={openEdit}
+              accessibilityRole="button"
+              accessibilityLabel="Edit profile"
+              hitSlop={4}
+            >
+              <View style={styles.avatarBorder}>
+                <Avatar name={profile?.fullName ?? user?.fullName ?? 'You'} size={56} />
+              </View>
+              <View style={styles.avatarEditBadge}>
+                <Ionicons name="pencil" size={12} color={colors.white} />
+              </View>
+            </Pressable>
+            <View style={styles.profileIdentity}>
+              <View style={styles.nameRow}>
+                <Text style={styles.name} numberOfLines={2}>{name}</Text>
+                {isVerified ? (
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={18}
+                    color={LINKEDIN_BLUE}
+                    accessibilityLabel="Verified profile"
+                  />
+                ) : null}
+              </View>
+              {role ? <Text style={styles.headline} numberOfLines={1}>{role}</Text> : null}
+              {metaLine ? <Text style={styles.subline} numberOfLines={2}>{metaLine}</Text> : null}
             </View>
           </View>
 
-          <Text style={styles.name}>
-            {name}
-            {isVerified && (
-              <Text style={styles.verifiedBadge}>
-                <Ionicons name="shield-checkmark" size={14} color={VERIFY_BLUE} />
-              </Text>
-            )}
-          </Text>
-
-          {role ? <Text style={styles.headline}>{role}</Text> : null}
-          {metaLine ? <Text style={styles.subline}>{metaLine}</Text> : null}
-          {(profile?.email || profile?.phoneNumber) && (
-            <Text style={styles.locationLine}>
-              {location ? `${location} · ` : ''}
-              <Text style={styles.linkText}>Contact info</Text>
-            </Text>
-          )}
           {connectionCount !== undefined ? (
-            <Pressable onPress={() => router.push('/(tabs)/network')}>
+            <Pressable
+              style={styles.connectionsRow}
+              onPress={() => router.push('/(tabs)/network')}
+              accessibilityRole="button"
+              accessibilityLabel={`${connectionCount >= 500 ? '500+' : connectionCount} connections`}
+              hitSlop={6}
+            >
+              <Ionicons name="people" size={16} color={LINKEDIN_BLUE} />
               <Text style={styles.connections}>
-                {connectionCount >= 500 ? '500+ connections' : `${connectionCount} connections`}
+                {connectionCount >= 500 ? '500+' : connectionCount}
               </Text>
             </Pressable>
           ) : null}
@@ -270,7 +291,9 @@ export function MyProfileScreen() {
               />
 
               <ProfileSectionCard title="Role & Expertise" onEdit={openExpertise}>
-                <RoleExpertiseSection profile={profile} />
+                <Pressable onPress={openExpertise} accessibilityRole="button">
+                  <RoleExpertiseSection profile={profile} />
+                </Pressable>
               </ProfileSectionCard>
 
               {hasExperience ? (
@@ -325,7 +348,6 @@ export function MyProfileScreen() {
 const PROFILE_BG = '#F3F2EF';
 
 const styles = StyleSheet.create({
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   safe: { flex: 1, backgroundColor: PROFILE_BG },
   topBar: {
     flexDirection: 'row',
@@ -336,6 +358,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
     backgroundColor: colors.white,
+  },
+  topActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
   },
   topBtn: {
     width: 36,
@@ -359,7 +386,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.lg,
   },
   coverWrap: {
-    height: 108,
+    height: 40,
     backgroundColor: '#E8EFF5',
   },
   cover: {
@@ -367,55 +394,57 @@ const styles = StyleSheet.create({
   },
   profileBlock: {
     paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
-    marginTop: -46,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
     backgroundColor: colors.white,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
   avatarRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    marginBottom: spacing.sm,
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  profileIdentity: {
+    flex: 1,
+    minWidth: 0,
   },
   avatarBorder: {
-    borderWidth: 4,
+    borderWidth: 2,
     borderColor: colors.white,
-    borderRadius: 48,
+    borderRadius: 32,
     overflow: 'hidden',
   },
-  editProfileBtn: {
-    marginBottom: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: radius.full,
-    borderWidth: 1.5,
-    borderColor: colors.text,
-    backgroundColor: colors.white,
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
   },
-  editProfileText: {
-    fontFamily: typography.fontFamily.semibold,
-    fontSize: 13,
-    color: colors.text,
+  avatarEditBadge: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    borderWidth: 2,
+    borderColor: colors.white,
   },
   name: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: 24,
-    lineHeight: 28,
+    flexShrink: 1,
+    fontSize: 18,
+    lineHeight: 22,
     color: colors.text,
-    letterSpacing: 0.4,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  verifiedBadge: {
-    paddingTop: 2,
   },
   headline: {
-    marginTop: 4,
+    marginTop: 2,
     fontFamily: typography.fontFamily.bold,
-    fontSize: typography.size.md,
+    fontSize: typography.size.sm,
     color: colors.text,
   },
   subline: {
@@ -424,18 +453,14 @@ const styles = StyleSheet.create({
     fontSize: typography.size.sm,
     color: colors.text,
   },
-  locationLine: {
-    marginTop: 6,
-    fontFamily: typography.fontFamily.regular,
-    fontSize: typography.size.sm,
-    color: colors.textSecondary,
-  },
-  linkText: {
-    color: LINKEDIN_BLUE,
-    fontFamily: typography.fontFamily.semibold,
+  connectionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 5,
+    marginTop: spacing.xs,
   },
   connections: {
-    marginTop: 8,
     fontFamily: typography.fontFamily.bold,
     fontSize: typography.size.sm,
     color: LINKEDIN_BLUE,

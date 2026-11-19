@@ -7,6 +7,7 @@ import {
   type BillingInterval,
   type BillingPayment,
   type BillingProduct,
+  type FeatureAccess,
   type PlanProduct,
   type ProductStatus,
 } from '@/src/api/billing';
@@ -179,6 +180,40 @@ function PlanCard({
   );
 }
 
+/** The Free plan, shown first like the web's plan columns -- every account
+ *  has it, so there's nothing to buy. */
+function FreePlanCard({ features, current }: { features: FeatureAccess[]; current: boolean }) {
+  const included = includedFeatures(features);
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardHead}>
+        <Text style={styles.cardTitle}>Free</Text>
+        {current ? (
+          <View style={styles.currentPill}>
+            <Text style={styles.currentPillText}>Your plan</Text>
+          </View>
+        ) : null}
+      </View>
+      <Text style={styles.cardSub}>Create your profile and explore the platform.</Text>
+      <View style={styles.prices}>
+        <Text style={styles.price}>
+          {formatInr(0)}
+          <Text style={styles.per}> forever</Text>
+        </Text>
+      </View>
+      {included.map((label) => (
+        <Text key={label} style={styles.feature}>
+          <Text style={styles.tick}>✓ </Text>
+          {label}
+        </Text>
+      ))}
+      <Text style={styles.renewNote}>
+        {current ? 'No card needed' : 'Included with every account'}
+      </Text>
+    </View>
+  );
+}
+
 function PaymentRow({ payment }: { payment: BillingPayment }) {
   const name =
     payment.product === 'PREMIUM'
@@ -269,6 +304,7 @@ export default function PremiumScreen() {
       </View>
 
       <Text style={styles.sectionTitle}>Plans</Text>
+      <FreePlanCard features={plans.free_features ?? []} current={me.tier === 'FREE'} />
       {plans.products.map((plan) => (
         <PlanCard
           key={plan.product}

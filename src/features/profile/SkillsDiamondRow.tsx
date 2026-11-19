@@ -19,7 +19,7 @@ export function SkillsDiamondRow({ skills, maxVisible = 2 }: Props) {
 
   return (
     <View style={styles.row}>
-      <Ionicons name="diamond-outline" size={14} color={colors.textSecondary} />
+      <Ionicons name="construct-outline" size={14} color={colors.textSecondary} />
       <Text style={styles.text}>{formatSkillsSummary(skills, maxVisible)}</Text>
     </View>
   );

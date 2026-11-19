@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -8,8 +8,14 @@ import {
   Text,
   View,
 } from 'react-native';
+import {
+  COMPLETE_PROFILE_MESSAGE,
+  COMPLETE_PROFILE_TITLE,
+  ONBOARDING_EDIT_PROFILE,
+  isProfileIncompleteError,
+} from '@/src/features/profile/profileGate';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { EmptyState, ErrorState } from '@/src/components/EmptyState';
 import { DemoTourOverlay } from '@/src/features/tour/DemoTourOverlay';
@@ -23,6 +29,15 @@ import { useAuthStore } from '@/src/store/authStore';
 import { usePrefsStore } from '@/src/store/prefsStore';
 import { colors, spacing, typography } from '@/src/theme/tokens';
 import type { EventItem } from '@/src/types/api';
+import { adAfter, adsApi, trackAd, type AdCard } from '@/src/api/ads';
+import { SponsoredPostCard } from '@/src/features/ads/SponsoredPostCard';
+
+// Posts with sponsored posts interleaved (server-driven cadence, see
+// adAfter and Backend-tech docs/ADVERTISEMENTS_PLAN.md).
+type FeedRow = { kind: 'post'; key: string; item: EventItem } | { kind: 'ad'; key: string; ad: AdCard };
+
+// An ad counts as seen once half of it has been on screen for a second.
+const AD_VIEWABILITY = { itemVisiblePercentThreshold: 50, minimumViewTime: 1000 };
 
 import { FeedSkeleton } from '@/src/components/Skeleton';
 const PAGE_SIZE = 20;
@@ -92,6 +107,35 @@ export default function FeedScreen() {
 
   const data = useMemo<EventItem[]>(() => flattenUnique(feedQuery.data), [feedQuery.data]);
 
+  // One ad set per feed load; refreshed with pull-to-refresh. Never errors.
+  const adsQuery = useQuery({ queryKey: ['ads', 'feed'], queryFn: () => adsApi.feed(), staleTime: 5 * 60 * 1000 });
+  const rows = useMemo<FeedRow[]>(() => {
+    const out: FeedRow[] = [];
+    data.forEach((item, i) => {
+      out.push({ kind: 'post', key: `p:${String(item.id ?? i)}`, item });
+      const ad = adAfter(adsQuery.data, i, data.length);
+      if (ad) out.push({ kind: 'ad', key: `ad:${ad.id}`, ad });
+    });
+    return out;
+  }, [data, adsQuery.data]);
+
+  const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: { item: FeedRow }[] }) => {
+    for (const v of viewableItems) {
+      if (v.item?.kind === 'ad' && !v.item.ad.own) trackAd(v.item.ad.id, 'IMPRESSION');
+    }
+  }).current;
+  const renderRow = useCallback(({ item: row }: { item: FeedRow }) => {
+    if (row.kind === 'ad') return <SponsoredPostCard ad={row.ad} />;
+    return (
+      <ActivityPostCard
+        item={row.item}
+        authorName={row.item.ownerName ?? row.item.authorName}
+        variant="feed"
+        hideDivider
+      />
+    );
+  }, []);
+
   // A live post is inserted where it belongs instead of refetching -- a
   // refetch of an infinite query re-downloads every loaded page.
   const queryClient = useQueryClient();
@@ -129,6 +173,17 @@ export default function FeedScreen() {
   if (!isNetwork && feedQuery.isLoading) return <FeedSkeleton />;
 
   if (!isNetwork && feedQuery.isError) {
+    // Profile gate: offer the fix, not a retry that can only fail again.
+    if (isProfileIncompleteError(feedQuery.error)) {
+      return (
+        <ErrorState
+          title={COMPLETE_PROFILE_TITLE}
+          message={COMPLETE_PROFILE_MESSAGE}
+          retryLabel="Complete profile"
+          onRetry={() => router.push(ONBOARDING_EDIT_PROFILE)}
+        />
+      );
+    }
     return (
       <ErrorState
         title="Feed unavailable"
@@ -144,8 +199,10 @@ export default function FeedScreen() {
     <View style={styles.screen}>
       <FeedTabs active={activeTab} onChange={setActiveTab} />
       <FlatList
-        data={data}
-        keyExtractor={(item, index) => String(item.id ?? index)}
+        data={rows}
+        keyExtractor={(row) => row.key}
+        viewabilityConfig={AD_VIEWABILITY}
+        onViewableItemsChanged={onViewableItemsChanged}
         contentContainerStyle={data.length === 0 ? styles.emptyList : styles.list}
         ItemSeparatorComponent={FeedSeparator}
         keyboardShouldPersistTaps="handled"
@@ -155,6 +212,7 @@ export default function FeedScreen() {
             refreshing={feedQuery.isRefetching && !feedQuery.isFetchingNextPage}
             onRefresh={() => {
               void feedQuery.refetch();
+              void adsQuery.refetch();
             }}
             tintColor={colors.primary}
             colors={[colors.primary]}
@@ -188,14 +246,7 @@ export default function FeedScreen() {
             </View>
           ) : null
         }
-        renderItem={({ item }) => (
-          <ActivityPostCard
-            item={item}
-            authorName={item.ownerName ?? item.authorName}
-            variant="feed"
-            hideDivider
-          />
-        )}
+        renderItem={renderRow}
       />
 
       <Pressable

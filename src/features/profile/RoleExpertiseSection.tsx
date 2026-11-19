@@ -5,11 +5,10 @@ import { SkillsDiamondRow } from '@/src/features/profile/SkillsDiamondRow';
 import {
   normalizeOptions,
   normalizeProfileIds,
-  resolveOptionLabel,
   resolveOptionLabels,
 } from '@/src/features/profile/profileOptions';
 import type { ProfessionalProfile } from '@/src/types/api';
-import { colors, spacing, typography } from '@/src/theme/tokens';
+import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
 type Props = {
   profile?: ProfessionalProfile | null;
@@ -38,30 +37,46 @@ export function getProfileSkillLabels(
   ];
 }
 
-function SkillBlock({ title, values }: { title: string; values: string[] }) {
+function SkillBlock({
+  title,
+  values,
+  showAll,
+}: {
+  title: string;
+  values: string[];
+  showAll: boolean;
+}) {
   if (!values.length) return null;
 
   return (
     <View style={styles.block}>
       <Text style={styles.blockTitle}>{title}</Text>
-      <SkillsDiamondRow skills={values} maxVisible={3} />
+      {showAll ? (
+        <View style={styles.skillChipRow}>
+          {values.map((value) => (
+            <View key={`${title}-${value}`} style={styles.skillChip}>
+              <Text style={styles.skillChipText}>{value}</Text>
+            </View>
+          ))}
+        </View>
+      ) : (
+        <SkillsDiamondRow skills={values} maxVisible={3} />
+      )}
     </View>
   );
 }
 
-export function RoleExpertiseSection({ profile }: Props) {
+export function RoleExpertiseSection({ profile, showAll = false }: Props & { showAll?: boolean }) {
   const optionsQuery = useQuery({
     queryKey: ['profile-options'],
     queryFn: profileApi.options,
   });
 
-  const roleOptions = normalizeOptions(optionsQuery.data?.roles);
   const disciplineOptions = normalizeOptions(optionsQuery.data?.disciplines);
   const specializationOptions = normalizeOptions(optionsQuery.data?.specializations);
   const projectTypeOptions = normalizeOptions(optionsQuery.data?.projectTypes);
 
   const ids = normalizeProfileIds((profile as Record<string, unknown>) ?? {});
-  const roleLabel = resolveOptionLabel(roleOptions, profile?.role) ?? profile?.role;
   const disciplines = resolveOptionLabels(
     disciplineOptions,
     ids.disciplineIds.length ? ids.disciplineIds : profile?.disciplineIds,
@@ -75,27 +90,20 @@ export function RoleExpertiseSection({ profile }: Props) {
     ids.projectTypeIds.length ? ids.projectTypeIds : profile?.projectTypeIds,
   );
 
-  const hasContent = Boolean(
-    roleLabel || disciplines.length || specializations.length || projectTypes.length,
-  );
+  // The role is already shown beside the avatar, so it isn't repeated here.
+  const hasContent = Boolean(disciplines.length || specializations.length || projectTypes.length);
 
   if (!hasContent) {
     return (
-      <Text style={styles.empty}>No role or expertise details shared yet.</Text>
+      <Text style={styles.empty}>No expertise details shared yet.</Text>
     );
   }
 
   return (
     <View>
-      {roleLabel ? (
-        <View style={styles.block}>
-          <Text style={styles.blockTitle}>Role</Text>
-          <Text style={styles.roleValue}>{roleLabel}</Text>
-        </View>
-      ) : null}
-      <SkillBlock title="Discipline" values={disciplines} />
-      <SkillBlock title="Specialization" values={specializations} />
-      <SkillBlock title="Project Types" values={projectTypes} />
+      <SkillBlock title="Discipline" values={disciplines} showAll={showAll} />
+      <SkillBlock title="Specialization" values={specializations} showAll={showAll} />
+      <SkillBlock title="Project Types" values={projectTypes} showAll={showAll} />
     </View>
   );
 }
@@ -105,14 +113,27 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   blockTitle: {
-    fontFamily: typography.fontFamily.semibold,
+    fontFamily: typography.fontFamily.bold,
     fontSize: typography.size.sm,
-    color: colors.textSecondary,
+    color: colors.primary,
     marginBottom: spacing.xs,
   },
-  roleValue: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: typography.size.md,
+  skillChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  skillChip: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    backgroundColor: '#FFF4E8',
+    borderWidth: 1,
+    borderColor: '#F6D6B6',
+  },
+  skillChipText: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: typography.size.xs,
     color: colors.text,
   },
   empty: {

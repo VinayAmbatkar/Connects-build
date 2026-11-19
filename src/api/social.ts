@@ -12,6 +12,8 @@ export interface Favourite {
   favouriteUserName: string;
   specialization: string;
   role: string;
+  /** Profile badge of the saved person. */
+  verified?: boolean;
   createdAt: string;
 }
 
@@ -26,6 +28,8 @@ export interface Suggestion {
   projectCount: number;
   location: string;
   mutualConnectionCount?: number;
+  /** Profile badge. */
+  verified?: boolean;
 }
 
 export interface MutualConnection {

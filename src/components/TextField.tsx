@@ -1,4 +1,4 @@
-import { forwardRef, type ReactNode } from 'react';
+import { forwardRef, useRef, type ReactNode } from 'react';
 import {
   StyleProp,
   StyleSheet,
@@ -8,6 +8,7 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
+import { useKeyboardAwareInput } from '@/src/components/KeyboardAwareScrollView';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
 type Props = TextInputProps & {
@@ -31,12 +32,17 @@ export const TextField = forwardRef<TextInput, Props>(
       style,
       labelSuffix,
       inputRowStyle,
+      onFocus,
       ...props
     },
     ref,
   ) => {
+    const keyboardAware = useKeyboardAwareInput();
+    // The whole field box (not just the text line) is what has to clear
+    // the keyboard -- and, with an error, the message under it too.
+    const fieldRef = useRef<View>(null);
     return (
-      <View style={styles.wrap}>
+      <View style={styles.wrap} ref={fieldRef} collapsable={false}>
         {label ? (
           <Text style={styles.label}>
             {label}
@@ -50,6 +56,10 @@ export const TextField = forwardRef<TextInput, Props>(
             ref={ref}
             placeholderTextColor={colors.textMuted}
             style={[styles.input, style]}
+            onFocus={(event) => {
+              keyboardAware?.ensureVisible(fieldRef.current);
+              onFocus?.(event);
+            }}
             {...props}
           />
           {rightAddon}

@@ -25,12 +25,9 @@ export function SettingsGeneralScreen() {
   const mutation = useMutation({
     mutationFn: (startupPage: string) =>
       accountApi.updateGeneral({
-        language: 'ENGLISH',
+        language: generalQuery.data?.language ?? 'ENGLISH',
         startupPage,
-        notificationsEnabled: Boolean(
-          (generalQuery.data as { notificationsEnabled?: boolean } | undefined)
-            ?.notificationsEnabled,
-        ),
+        notificationsEnabled: Boolean(generalQuery.data?.notificationsEnabled),
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['general'] });
@@ -41,10 +38,7 @@ export function SettingsGeneralScreen() {
 
   if (generalQuery.isLoading) return <DetailSkeleton />;
 
-  const current = String(
-    (generalQuery.data as { startupPage?: string } | undefined)?.startupPage ??
-      'DASHBOARD',
-  ).toUpperCase();
+  const current = String(generalQuery.data?.startupPage ?? 'DASHBOARD').toUpperCase();
 
   return (
     <View style={styles.screen}>

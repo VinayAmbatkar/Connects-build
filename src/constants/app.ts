@@ -4,8 +4,8 @@ import type { ComponentProps } from 'react';
 import type { Ionicons } from '@expo/vector-icons';
 
 export const LEGAL = {
-  privacyUrl: 'https://connexbuild.com/privacy',
-  termsUrl: 'https://connexbuild.com/terms',
+  privacyUrl: 'https://www.cobilds.com/privacy-policy',
+  termsUrl: 'https://www.cobilds.com/terms-and-conditions',
   supportEmail: 'support@connexbuild.com',
 };
 
@@ -34,38 +34,38 @@ export const DEFAULT_ROLES: AppRole[] = [
   {
     value: 'Consultant',
     label: 'Consultant',
-    description: 'I provide expert advice and consultation',
+    description: 'Connect with specialists who guide every decision.',
     image: ROLE_IMAGES.Consultant,
+  },
+  {
+    value: 'Vendor',
+    label: 'Vendor',
+    description: 'List materials, manage orders and grow sales.',
+    image: ROLE_IMAGES.Vendor,
   },
   {
     value: 'Builder',
     label: 'Builder',
-    description: 'I build and develop construction projects',
+    description: 'Manage projects, teams and timelines.',
     image: ROLE_IMAGES.Builder,
   },
   {
     value: 'Consumer',
     label: 'Consumer',
-    description: "I'm a home or property owner looking to build, renovate, or hire professionals",
+    description: 'Find, compare and hire trusted professionals.',
     image: ROLE_IMAGES.Consumer,
-  },
-  {
-    value: 'Contractor',
-    label: 'Contractor',
-    description: 'I execute and manage construction work',
-    image: ROLE_IMAGES.Contractor,
   },
   {
     value: 'Architect',
     label: 'Architect',
-    description: 'I plan and design spaces and structures',
+    description: 'Design, collaborate and bring projects to life.',
     image: ROLE_IMAGES.Architect,
   },
   {
-    value: 'Vendor',
-    label: 'Vendor',
-    description: 'I supply materials and products for projects',
-    image: ROLE_IMAGES.Vendor,
+    value: 'Contractor',
+    label: 'Contractor',
+    description: 'Find skilled execution partners for your projects.',
+    image: ROLE_IMAGES.Contractor,
   },
 ];
 

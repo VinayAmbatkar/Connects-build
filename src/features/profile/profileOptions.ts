@@ -246,3 +246,91 @@ export function normalizeProfileIds(raw: Record<string, unknown>): {
     projectTypeIds: extract('projectTypes', 'projectTypeIds'),
   };
 }
+
+export type CareerSelection = {
+  discipline: string;
+  specializations: { specialization: string; projectTypes: string[] }[];
+};
+
+function readCareerTree(raw: unknown): CareerSelection[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
+    .map((item) => ({
+      discipline: String(item.discipline ?? ''),
+      specializations: (Array.isArray(item.specializations) ? item.specializations : [])
+        .filter((sp): sp is Record<string, unknown> => !!sp && typeof sp === 'object')
+        .map((sp) => ({
+          specialization: String(sp.specialization ?? ''),
+          projectTypes: Array.isArray(sp.projectTypes) ? sp.projectTypes.map(String) : [],
+        })),
+    }));
+}
+
+/**
+ * The discipline -> specialization -> project-types tree the backend stores
+ * as the source of truth (`categorySelections`; it derives the flat
+ * discipline/specialization/projectType lists from it whenever it is
+ * non-empty). The app edits the flat lists, so the tree is rebuilt from
+ * them here -- sending the old tree back unchanged would make the backend
+ * silently ignore every expertise edit made in the app.
+ *
+ * Each specialization keeps the project types it already had in the saved
+ * tree (web keeps them per specialization); project types picked in the app
+ * that aren't attached anywhere yet are added to every selected
+ * specialization, since the app picks them for the profile as a whole.
+ *
+ * Returns null when the selection can't be expressed as a tree without
+ * losing project types (project types picked but no specialization) --
+ * callers then send an empty tree so the backend keeps the flat lists.
+ */
+export function buildCategorySelections(
+  form: { disciplineIds?: string[]; specializationIds?: string[]; projectTypeIds?: string[] },
+  savedTree: unknown,
+  specializations: ProfileOption[],
+): CareerSelection[] | null {
+  const disciplineIds = form.disciplineIds ?? [];
+  const specializationIds = form.specializationIds ?? [];
+  const projectTypeIds = form.projectTypeIds ?? [];
+
+  const savedTypesBySpec = new Map<string, string[]>();
+  for (const discipline of readCareerTree(savedTree)) {
+    for (const sp of discipline.specializations) {
+      const key = canonicalOptionId(sp.specialization);
+      savedTypesBySpec.set(key, [...(savedTypesBySpec.get(key) ?? []), ...sp.projectTypes]);
+    }
+  }
+
+  const assigned = new Set<string>();
+  const tree: CareerSelection[] = disciplineIds.map((discipline) => {
+    const scoped = filterSpecializationsByDiscipline(specializations, discipline);
+    const specs = specializationIds.filter(
+      (id) => !assigned.has(canonicalOptionId(id)) && scoped.some((o) => optionIdsMatch(o.id, id)),
+    );
+    specs.forEach((id) => assigned.add(canonicalOptionId(id)));
+    return { discipline, specializations: specs.map((id) => ({ specialization: id, projectTypes: [] })) };
+  });
+
+  // Specializations no selected discipline claims stay with the first one
+  // rather than being dropped.
+  const orphanSpecs = specializationIds.filter((id) => !assigned.has(canonicalOptionId(id)));
+  if (orphanSpecs.length && tree.length) {
+    tree[0].specializations.push(
+      ...orphanSpecs.map((id) => ({ specialization: id, projectTypes: [] as string[] })),
+    );
+  }
+
+  const allSpecs = tree.flatMap((d) => d.specializations);
+  const usedTypes = new Set<string>();
+  for (const sp of allSpecs) {
+    const previous = savedTypesBySpec.get(canonicalOptionId(sp.specialization)) ?? [];
+    sp.projectTypes = projectTypeIds.filter((pt) => previous.some((p) => optionIdsMatch(p, pt)));
+    sp.projectTypes.forEach((pt) => usedTypes.add(canonicalOptionId(pt)));
+  }
+  const leftoverTypes = projectTypeIds.filter((pt) => !usedTypes.has(canonicalOptionId(pt)));
+  if (leftoverTypes.length) {
+    if (!allSpecs.length) return null;
+    for (const sp of allSpecs) sp.projectTypes = [...sp.projectTypes, ...leftoverTypes];
+  }
+  return tree;
+}

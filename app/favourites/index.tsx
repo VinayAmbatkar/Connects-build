@@ -1,4 +1,5 @@
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { VerifiedName } from '@/src/components/VerifiedName';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -41,6 +42,14 @@ export default function FavouritesScreen() {
       keyExtractor={(f) => f.favouriteUserId}
       refreshControl={<RefreshControl refreshing={query.isRefetching} onRefresh={() => void query.refetch()} />}
       contentContainerStyle={items.length ? styles.content : styles.emptyContent}
+      ListHeaderComponent={
+        <View style={styles.header}>
+          <Text style={styles.subtitle}>
+            Profiles you saved because you're interested in them
+            {items.length ? ` · ${items.length}` : ''}
+          </Text>
+        </View>
+      }
       ListEmptyComponent={
         <EmptyState
           title="No saved profiles"
@@ -54,7 +63,7 @@ export default function FavouritesScreen() {
           <Pressable style={styles.row} onPress={() => router.push(`/public-profile/${item.favouriteUserId}`)}>
             <Avatar name={item.favouriteUserName} size={48} />
             <View style={styles.copy}>
-              <Text style={styles.name}>{item.favouriteUserName}</Text>
+              <VerifiedName name={item.favouriteUserName} verified={item.verified} style={styles.name} />
               {[item.role, item.specialization].filter(Boolean).length ? (
                 <Text style={styles.meta} numberOfLines={1}>
                   {[item.role, item.specialization].filter(Boolean).join(' · ')}
@@ -78,9 +87,21 @@ export default function FavouritesScreen() {
 }
 
 const styles = StyleSheet.create({
+  header: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  subtitle: {
+    fontFamily: typography.fontFamily.regular,
+    fontSize: typography.size.sm,
+    lineHeight: 20,
+    color: colors.textSecondary,
+  },
   screen: { flex: 1, backgroundColor: colors.background },
   content: { paddingVertical: spacing.sm },
-  emptyContent: { flexGrow: 1, justifyContent: 'center' },
+  // The empty state centres itself below the subtitle.
+  emptyContent: { flexGrow: 1 },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md - 4, paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2 },
   copy: { flex: 1 },
   name: { fontFamily: typography.fontFamily.semibold, fontSize: typography.size.md, color: colors.text },

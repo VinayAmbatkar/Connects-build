@@ -35,6 +35,12 @@ describe('ActivityPostCard (feed variant)', () => {
     expect(screen.getByText('3h ·')).toBeTruthy();
   });
 
+  it('shows the personal verification badge only once beside the author name', async () => {
+    await renderCard(<ActivityPostCard item={{ ...post, ownerVerified: true }} variant="feed" />);
+    expect(screen.getAllByTestId('post-name-verified')).toHaveLength(1);
+    expect(screen.queryByTestId('post-avatar-verified')).toBeNull();
+  });
+
   it('shows the full uploaded photo in the feed without cropping', async () => {
     await renderCard(
       <ActivityPostCard

@@ -10,10 +10,12 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { usePullToRefresh } from '@/src/hooks/usePullToRefresh';
+import { VerifiedName } from '@/src/components/VerifiedName';
 import { router, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomSheet } from '@/src/components/BottomSheet';
 import { EmptyState, ErrorState } from '@/src/components/EmptyState';
 import { connectionsApi } from '@/src/api/connections';
@@ -35,6 +37,8 @@ import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
 import { appAlert } from '@/src/components/AppDialog';
 import { usePlaceLabel } from '@/src/hooks/usePlaceLabels';
+import { formatRoleLabel } from '@/src/features/profile/profileFormat';
+import { VERIFIED_BLUE } from '@/src/components/PremiumBadge';
 import { ListSkeleton } from '@/src/components/Skeleton';
 type FilterKey = 'location' | 'projectType' | 'discipline' | 'category' | null;
 
@@ -92,6 +96,8 @@ function OptionRow({
 }
 
 export function CategorySearchResultsScreen() {
+  const insets = useSafeAreaInsets();
+  const pull = usePullToRefresh();
   const queryClient = useQueryClient();
   const role = useSearchFlowStore((s) => s.role);
   const location = useSearchFlowStore((s) => s.location);
@@ -344,6 +350,7 @@ export function CategorySearchResultsScreen() {
         />
       ) : (
         <FlatList
+          refreshControl={pull.refreshControl}
           data={filtered}
           keyExtractor={(item, index) => String(item.userId ?? item.id ?? index)}
           contentContainerStyle={
@@ -377,6 +384,35 @@ export function CategorySearchResultsScreen() {
         />
       )}
 
+      {/* Floating "glass" bar: the tab bar is hidden in this flow, so this
+          is the way out -- home, or back to the role picker. */}
+      <View
+        pointerEvents="box-none"
+        style={[styles.glassWrap, { bottom: Math.max(insets.bottom, spacing.sm) + spacing.xs }]}
+      >
+        <View style={styles.glassBar}>
+          <Pressable
+            style={styles.glassBtn}
+            onPress={() => leaveFlow('/(tabs)/feed')}
+            accessibilityRole="button"
+            accessibilityLabel="Back to home"
+          >
+            <Ionicons name="home-outline" size={18} color={colors.text} />
+            <Text style={styles.glassBtnText}>Home</Text>
+          </Pressable>
+          <View style={styles.glassDivider} />
+          <Pressable
+            style={styles.glassBtn}
+            onPress={() => leaveFlow('/(tabs)/connect')}
+            accessibilityRole="button"
+            accessibilityLabel="Reselect role"
+          >
+            <Ionicons name="swap-horizontal" size={18} color={colors.primary} />
+            <Text style={[styles.glassBtnText, styles.glassBtnTextAccent]}>Change role</Text>
+          </Pressable>
+        </View>
+      </View>
+
       <BottomSheet
         visible={openFilter != null}
         title={sheetTitle}
@@ -409,6 +445,13 @@ export function CategorySearchResultsScreen() {
       </BottomSheet>
     </SafeAreaView>
   );
+}
+
+/** Close the wizard/results stack, then open a tab -- so Back from there
+ *  doesn't land in the old results again. */
+function leaveFlow(href: Href) {
+  if (router.canDismiss()) router.dismissAll();
+  router.navigate(href);
 }
 
 function initialsFrom(name: string) {
@@ -445,7 +488,7 @@ function ResultCard({
       .filter(Boolean)
       .slice(0, 3);
     if (fromIds.length) return fromIds;
-    return [item.role, company].filter(Boolean).map(String).slice(0, 3);
+    return [formatRoleLabel(item.role), company].filter(Boolean).map(String).slice(0, 3);
   }, [item.disciplineIds, item.specializationIds, item.role, company]);
 
   const specialties = specialtyLabels.join(' · ');
@@ -473,21 +516,32 @@ function ResultCard({
         ? item.reviews
         : null;
 
+  // "0+ years" says nothing -- only show real experience.
+  const years = item.yearsExperience ? `${item.yearsExperience}+ yrs experience` : '';
+  const infoLine = [locLabel, years].filter(Boolean).join(' · ');
+
   return (
-    <Pressable style={styles.card} onPress={onOpen}>
+    <Pressable
+      style={styles.card}
+      onPress={onOpen}
+      accessibilityRole="button"
+      accessibilityLabel={`${name}${item.verified ? ', verified' : ''}`}
+    >
       <View style={styles.logo}>
         <Text style={styles.logoText}>{initialsFrom(name) || '?'}</Text>
+        {item.verified ? (
+          // Tick on the avatar too, so it reads at a glance down the list.
+          <View style={styles.logoTick}>
+            <Ionicons name="checkmark-circle" size={16} color={VERIFIED_BLUE} />
+          </View>
+        ) : null}
       </View>
 
       <View style={styles.cardMain}>
-        <View style={styles.cardHeader}>
-          <Text style={styles.cardName} numberOfLines={1}>
-            {name}
-          </Text>
-          <Pressable hitSlop={8}>
-            <Ionicons name="close" size={18} color={colors.textMuted} />
-          </Pressable>
-        </View>
+        {/* The tick is on the avatar -- not repeated after the name. */}
+        <Text style={styles.cardName} numberOfLines={1}>
+          {name}
+        </Text>
 
         {specialties ? (
           <Text style={styles.cardMeta} numberOfLines={1}>
@@ -495,49 +549,54 @@ function ResultCard({
           </Text>
         ) : null}
 
-        {locLabel ? (
-          <Text style={styles.cardLoc} numberOfLines={1}>
-            {locLabel}
-          </Text>
+        {/* Location and experience share one line -- no gap between them. */}
+        {infoLine ? (
+          <View style={styles.infoRow}>
+            {locLabel ? (
+              <Ionicons name="location-outline" size={12} color={colors.textMuted} />
+            ) : null}
+            <Text style={styles.cardLoc} numberOfLines={1}>
+              {infoLine}
+            </Text>
+          </View>
         ) : null}
 
-        <View style={styles.cardFooter}>
-          {rating != null ? (
-            <View style={styles.ratingRow}>
-              <Ionicons name="star" size={13} color={colors.primary} />
-              <Text style={styles.ratingValue}>{rating.toFixed(1)}</Text>
-              {reviewCount != null ? (
-                <Text style={styles.ratingCount}>({reviewCount} reviews)</Text>
-              ) : null}
-            </View>
-          ) : item.yearsExperience != null ? (
-            <Text style={styles.cardLoc}>
-              {item.yearsExperience}+ years experience
-            </Text>
-          ) : (
-            <View />
-          )}
-
-          <Pressable
-            style={[styles.connectBtn, alreadyLinked && styles.connectDisabled]}
-            disabled={alreadyLinked || busy}
-            onPress={onConnect}
-          >
-            {busy ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <Text
-                style={[
-                  styles.connectBtnText,
-                  alreadyLinked && styles.connectDisabledText,
-                ]}
-              >
-                {alreadyLinked ? 'Pending' : 'Connect'}
-              </Text>
-            )}
-          </Pressable>
-        </View>
+        {rating != null ? (
+          <View style={styles.ratingRow}>
+            <Ionicons name="star" size={12} color={colors.primary} />
+            <Text style={styles.ratingValue}>{rating.toFixed(1)}</Text>
+            {reviewCount != null ? (
+              <Text style={styles.ratingCount}>({reviewCount} reviews)</Text>
+            ) : null}
+          </View>
+        ) : null}
       </View>
+
+      <Pressable
+        style={[styles.connectBtn, alreadyLinked && styles.connectDisabled]}
+        disabled={alreadyLinked || busy}
+        onPress={onConnect}
+        hitSlop={6}
+        accessibilityRole="button"
+        accessibilityLabel={alreadyLinked ? 'Request pending' : `Connect with ${name}`}
+      >
+        {busy ? (
+          <ActivityIndicator size="small" color={colors.primary} />
+        ) : (
+          <>
+            <Ionicons
+              name={alreadyLinked ? 'time-outline' : 'person-add-outline'}
+              size={13}
+              color={alreadyLinked ? colors.textMuted : colors.primary}
+            />
+            <Text
+              style={[styles.connectBtnText, alreadyLinked && styles.connectDisabledText]}
+            >
+              {alreadyLinked ? 'Pending' : 'Connect'}
+            </Text>
+          </>
+        )}
+      </Pressable>
     </Pressable>
   );
 }
@@ -649,9 +708,52 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingHorizontal: spacing.md,
-    paddingBottom: spacing.xxl,
+    // Room for the floating glass bar.
+    paddingBottom: 120,
   },
-  emptyList: { flexGrow: 1 },
+  emptyList: { flexGrow: 1, paddingBottom: 120 },
+  glassWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  glassBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.9)',
+    backgroundColor: 'rgba(255, 255, 255, 0.86)',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10,
+  },
+  glassBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    borderRadius: radius.full,
+  },
+  glassBtnText: {
+    fontFamily: typography.fontFamily.semibold,
+    fontSize: typography.size.sm,
+    color: colors.text,
+  },
+  glassBtnTextAccent: {
+    color: colors.primary,
+  },
+  glassDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 22,
+    backgroundColor: colors.border,
+  },
   optionRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -690,20 +792,33 @@ const styles = StyleSheet.create({
   },
   card: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: 12,
-    paddingVertical: 14,
+    paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
     backgroundColor: colors.white,
   },
   logo: {
-    width: 52,
-    height: 52,
-    borderRadius: 8,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: colors.primaryMuted,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  logoTick: {
+    position: 'absolute',
+    right: -3,
+    bottom: -3,
+    borderRadius: 9,
+    backgroundColor: colors.white,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    marginTop: 3,
   },
   logoText: {
     fontFamily: typography.fontFamily.bold,
@@ -714,13 +829,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
   cardName: {
-    flex: 1,
     fontFamily: typography.fontFamily.bold,
     fontSize: 15,
     color: colors.text,
@@ -733,19 +842,13 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   cardLoc: {
-    marginTop: 2,
+    flexShrink: 1,
     fontFamily: typography.fontFamily.regular,
     fontSize: 12,
     color: colors.textMuted,
   },
-  cardFooter: {
-    marginTop: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
   ratingRow: {
+    marginTop: 3,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
@@ -762,13 +865,15 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   connectBtn: {
-    height: 32,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: colors.primary,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 4,
+    height: 30,
+    paddingHorizontal: 10,
+    borderRadius: 15,
+    borderWidth: 1.2,
+    borderColor: colors.primary,
     backgroundColor: colors.white,
   },
   connectDisabled: {

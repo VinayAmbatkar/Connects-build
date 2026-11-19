@@ -11,6 +11,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/src/components/Button';
 import { EmptyState } from '@/src/components/EmptyState';
 import { notificationsApi } from '@/src/api/notifications';
+import { credentialsApi } from '@/src/api/credentials';
+import { alertApiError } from '@/src/features/billing/featureLocked';
 import { useSSE } from '@/src/hooks/useSSE';
 import { routeForNotification } from '@/src/notifications/push';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
@@ -59,6 +61,16 @@ export default function NotificationsScreen() {
     },
   });
 
+  const respondToCredentialMutation = useMutation({
+    mutationFn: ({ requestId, action }: { requestId: number; action: 'accept' | 'reject' }) =>
+      credentialsApi.respondToDocumentAccess(requestId, action),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      void queryClient.invalidateQueries({ queryKey: ['notifications-unread'] });
+    },
+    onError: (error) => alertApiError(error),
+  });
+
   if (listQuery.isLoading) return <ListSkeleton />;
   const data = Array.isArray(listQuery.data) ? listQuery.data : [];
   const hasNotifications = data.length > 0;
@@ -94,13 +106,47 @@ export default function NotificationsScreen() {
           <Pressable
             style={[styles.card, !item.isRead && styles.unread]}
             onPress={() => {
-              if (!item.isRead) markOneMutation.mutate(item.id);
+              if (!item.isRead && item.type !== 'CREDENTIAL_VIEW_REQUEST') {
+                markOneMutation.mutate(item.id);
+              }
               const target = routeForNotification(item);
               if (target !== '/notifications') router.push(target);
             }}
           >
             <Text style={styles.title}>{item.message}</Text>
             <Text style={styles.body}>{formatWhen(item.createdAt)}</Text>
+            {item.type === 'CREDENTIAL_VIEW_REQUEST' ? (
+              <View style={styles.actions}>
+                <Pressable
+                  accessibilityRole="button"
+                  style={[styles.actionButton, styles.acceptButton]}
+                  disabled={respondToCredentialMutation.isPending}
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    if (item.referenceId) respondToCredentialMutation.mutate({
+                      requestId: item.referenceId,
+                      action: 'accept',
+                    });
+                  }}
+                >
+                  <Text style={styles.acceptText}>Accept</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  style={[styles.actionButton, styles.rejectButton]}
+                  disabled={respondToCredentialMutation.isPending}
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    if (item.referenceId) respondToCredentialMutation.mutate({
+                      requestId: item.referenceId,
+                      action: 'reject',
+                    });
+                  }}
+                >
+                  <Text style={styles.rejectText}>Reject</Text>
+                </Pressable>
+              </View>
+            ) : null}
           </Pressable>
         )}
       />
@@ -132,4 +178,16 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.regular,
     color: colors.textSecondary,
   },
+  actions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
+  actionButton: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  acceptButton: { backgroundColor: colors.primary },
+  rejectButton: { backgroundColor: colors.surfaceMuted, borderWidth: 1, borderColor: colors.border },
+  acceptText: { fontFamily: typography.fontFamily.semibold, color: colors.white },
+  rejectText: { fontFamily: typography.fontFamily.semibold, color: colors.text },
 });

@@ -12,6 +12,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { usePullToRefresh } from '@/src/hooks/usePullToRefresh';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -19,6 +20,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Avatar } from '@/src/components/Avatar';
 import { BottomSheet } from '@/src/components/BottomSheet';
+import { FocusHighlight } from '@/src/components/FocusHighlight';
 import { favouritesApi, suggestionsApi } from '@/src/api/social';
 import { ErrorState } from '@/src/components/EmptyState';
 import { getErrorMessage } from '@/src/api/client';
@@ -55,8 +57,12 @@ import { ProfileSkeleton } from '@/src/components/Skeleton';
 const LINKEDIN_BLUE = '#0A66C2';
 const PROFILE_BG = '#F3F2EF';
 
+/** Section a notification points at -- scrolled to and blinked on open. */
+export type ProfileFocus = 'connection' | 'credentials';
+
 type Props = {
   userId: string;
+  focus?: ProfileFocus;
 };
 
 function unwrapProjects(data: unknown): Project[] {
@@ -104,10 +110,13 @@ function ProjectRow({ project, onPress }: { project: Project; onPress: () => voi
   );
 }
 
-export function PublicProfileScreen({ userId }: Props) {
+export function PublicProfileScreen({ userId, focus }: Props) {
+  const pull = usePullToRefresh();
   const queryClient = useQueryClient();
   const [openProject, setOpenProject] = useState<Project | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [skillsOpen, setSkillsOpen] = useState(false);
+  const [expertiseOpen, setExpertiseOpen] = useState(false);
   const connectAccess = useFeature('connect');
   const messageAccess = useFeature('message');
   const me = useAuthStore((s) => s.user);
@@ -331,6 +340,7 @@ export function PublicProfileScreen({ userId }: Props) {
       </View>
 
       <ScrollView
+        refreshControl={pull.refreshControl}
         ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={styles.content}
@@ -347,15 +357,33 @@ export function PublicProfileScreen({ userId }: Props) {
         </View>
 
         <View style={styles.profileBlock}>
-          <View style={styles.avatarRow}>
+          <View style={styles.identityRow}>
             <View style={styles.avatarBorder}>
-              <Avatar name={profile?.fullName ?? 'Pro'} size={88} />
+              <Avatar name={profile?.fullName ?? 'Pro'} size={56} />
+            </View>
+            <View style={styles.identityCopy}>
+              <View style={styles.nameRow}>
+                <Text style={styles.name} numberOfLines={2}>{name}</Text>
+                {profile?.verified ? (
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={18}
+                    color={LINKEDIN_BLUE}
+                    accessibilityLabel="Verified profile"
+                  />
+                ) : null}
+              </View>
+              {role ? <Text style={styles.headline} numberOfLines={1}>{role}</Text> : null}
+              {metaLine ? <Text style={styles.subline} numberOfLines={2}>{metaLine}</Text> : null}
+              {profile?.businessVerified ? (
+                <View style={styles.businessBadge}>
+                  <Ionicons name="shield-checkmark" size={13} color={LINKEDIN_BLUE} />
+                  <Text style={styles.businessBadgeText}>Verified Business</Text>
+                </View>
+              ) : null}
             </View>
           </View>
 
-          <Text style={styles.name}>{name}</Text>
-          {role ? <Text style={styles.headline}>{role}</Text> : null}
-          {metaLine ? <Text style={styles.subline}>{metaLine}</Text> : null}
           {years ? (
             <Text style={styles.subline}>{years}+ years experience</Text>
           ) : null}
@@ -375,6 +403,7 @@ export function PublicProfileScreen({ userId }: Props) {
           ) : null}
 
           {!isOwnProfile ? (
+            <FocusHighlight active={focus === 'connection'} scrollRef={scrollRef}>
             <View style={styles.actionRow}>
               {isConnected ? (
                 <Pressable
@@ -467,6 +496,7 @@ export function PublicProfileScreen({ userId }: Props) {
                 </Pressable>
               ) : null}
             </View>
+            </FocusHighlight>
           ) : (
             <Pressable
               style={[styles.outlineBtn, { alignSelf: 'flex-start', marginTop: spacing.md }]}
@@ -499,10 +529,14 @@ export function PublicProfileScreen({ userId }: Props) {
               </ProfileSectionCard>
             ) : null}
 
-            {topSkills.length ? <TopSkillsCard skills={topSkills} /> : null}
+            {topSkills.length ? (
+              <TopSkillsCard skills={topSkills} onPress={() => setSkillsOpen(true)} />
+            ) : null}
 
             <ProfileSectionCard title="Role & Expertise">
-              <RoleExpertiseSection profile={profile} />
+              <Pressable onPress={() => setExpertiseOpen(true)} accessibilityRole="button">
+                <RoleExpertiseSection profile={profile} />
+              </Pressable>
             </ProfileSectionCard>
 
             {(role || company || years || location) ? (
@@ -523,7 +557,9 @@ export function PublicProfileScreen({ userId }: Props) {
               </ProfileSectionCard>
             ) : null}
 
-            <ProfileCertificationsSection profile={profile} />
+            <FocusHighlight active={focus === 'credentials'} scrollRef={scrollRef}>
+              <ProfileCertificationsSection profile={profile} isOwner={isOwnProfile} />
+            </FocusHighlight>
 
             {(email || website || linkedIn) ? (
               <ProfileSectionCard title="Contact">
@@ -629,6 +665,40 @@ export function PublicProfileScreen({ userId }: Props) {
       </BottomSheet>
 
       <ProjectDetailSheet project={openProject} onClose={() => setOpenProject(null)} />
+
+      <BottomSheet
+        visible={skillsOpen}
+        title="Top skills"
+        subtitle={`${topSkills.length} skills`}
+        onClose={() => setSkillsOpen(false)}
+        tall
+      >
+        {/* Two skills per row so the list stays short. */}
+        <View style={styles.skillGrid}>
+          {topSkills.map((skill, index) => (
+            <View key={`${skill}-${index}`} style={styles.detailSkillRow}>
+              <View style={styles.detailSkillIcon}>
+                <Ionicons name="construct-outline" size={16} color={colors.primary} />
+              </View>
+              <Text style={styles.detailSkillText} numberOfLines={2}>
+                {skill}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </BottomSheet>
+
+      <BottomSheet
+        visible={expertiseOpen}
+        title="Role & Expertise"
+        subtitle="Professional focus and project experience"
+        onClose={() => setExpertiseOpen(false)}
+        tall
+      >
+        <View style={styles.detailSheetContent}>
+          <RoleExpertiseSection profile={profile} showAll />
+        </View>
+      </BottomSheet>
 
       <BottomSheet visible={moreOpen} title={displayName} onClose={() => setMoreOpen(false)}>
         <Pressable style={styles.sheetRow} onPress={confirmBlock} accessibilityRole="button">
@@ -770,38 +840,101 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.lg,
   },
   coverWrap: {
-    height: 108,
+    height: 40,
     backgroundColor: '#E8EFF5',
   },
   cover: { flex: 1 },
   profileBlock: {
     paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
     paddingBottom: spacing.md,
-    marginTop: -46,
     backgroundColor: colors.white,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
-  avatarRow: {
+  identityRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    marginBottom: spacing.sm,
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
   },
   avatarBorder: {
-    borderWidth: 4,
+    borderWidth: 2,
     borderColor: colors.white,
-    borderRadius: 48,
+    borderRadius: 32,
     overflow: 'hidden',
+  },
+  identityCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
   },
   name: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: 24,
+    flexShrink: 1,
+    fontSize: 18,
+    lineHeight: 22,
     color: colors.text,
   },
   headline: {
+    marginTop: 2,
+    fontFamily: typography.fontFamily.semibold,
+    fontSize: typography.size.sm,
+    color: colors.text,
+  },
+  businessBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
     marginTop: 4,
-    fontFamily: typography.fontFamily.regular,
-    fontSize: typography.size.md,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: radius.full,
+    backgroundColor: '#E8F0FE',
+  },
+  businessBadgeText: {
+    fontFamily: typography.fontFamily.semibold,
+    fontSize: 10,
+    color: LINKEDIN_BLUE,
+  },
+  detailSheetContent: {
+    gap: spacing.sm,
+    paddingBottom: spacing.md,
+  },
+  skillGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: spacing.sm,
+    paddingBottom: spacing.md,
+  },
+  detailSkillRow: {
+    width: '48.5%',
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    padding: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceMuted,
+  },
+  detailSkillIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.white,
+  },
+  detailSkillText: {
+    flex: 1,
+    fontFamily: typography.fontFamily.semibold,
+    fontSize: typography.size.sm,
     color: colors.text,
   },
   subline: {

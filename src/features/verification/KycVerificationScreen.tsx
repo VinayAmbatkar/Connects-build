@@ -1,12 +1,12 @@
+import { useCallback } from 'react';
 import {
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { usePullToRefresh } from '@/src/hooks/usePullToRefresh';
+import { KeyboardAwareScrollView } from '@/src/components/KeyboardAwareScrollView';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -27,20 +27,35 @@ import {
 import {
   useAadhaarKyc,
   useConsultantKyc,
+  useEmployeeMethod,
   useGstKyc,
   useKycContext,
   useWorkEmailKyc,
+  useWorkProofKyc,
 } from '@/src/features/verification/useKycVerification';
 import { currentStepIndex, isFlowComplete } from '@/src/features/verification/kycLogic';
 import type { VerificationRequestSummary } from '@/src/types/api';
 
 import { DetailSkeleton } from '@/src/components/Skeleton';
 export function KycVerificationScreen() {
+  const pull = usePullToRefresh();
   const ctx = useKycContext();
   const aadhaar = useAadhaarKyc(ctx.status);
   const gst = useGstKyc(ctx.status, ctx.profile?.company?.trim() ?? '');
-  const workEmail = useWorkEmailKyc(ctx.status);
-  const consultant = useConsultantKyc(ctx.status, ctx.status?.aadhaar?.legalName?.trim() || ctx.profileName);
+  const legalName = ctx.status?.aadhaar?.legalName?.trim() || ctx.profileName;
+  const companyName = ctx.profile?.company?.trim() ?? '';
+  // Employees: OTP only when the company's owner whitelisted email domains,
+  // otherwise work proof. Re-checked whenever the profile's company changes.
+  const employeeMethod = useEmployeeMethod(companyName, ctx.flow === 'employee');
+  const refetchMethod = employeeMethod.refetch;
+  const onWorkProofRequired = useCallback(() => void refetchMethod(), [refetchMethod]);
+  const workEmail = useWorkEmailKyc(ctx.status, employeeMethod.data?.organizationId ?? '', onWorkProofRequired);
+  const workProof = useWorkProofKyc(ctx.status, {
+    legalName,
+    companyName,
+    companyEmail: ctx.status?.employeeEmail?.email,
+  });
+  const consultant = useConsultantKyc(ctx.status, legalName);
 
   const goBack = () => (router.canGoBack() ? router.back() : router.replace('/(tabs)/profile'));
   const editProfile = () => router.push('/edit-profile');
@@ -81,7 +96,7 @@ export function KycVerificationScreen() {
   const done = {
     aadhaar: aadhaar.approved,
     gst: gst.verified,
-    workEmail: workEmail.verified,
+    workEmail: workEmail.verified || workProof.approved,
     licence: consultant.approved,
   };
   const celebrating = aadhaar.step === 'success';
@@ -93,8 +108,9 @@ export function KycVerificationScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       {header}
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView
+      <View style={styles.flex}>
+        <KeyboardAwareScrollView
+          refreshControl={pull.refreshControl}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -123,9 +139,15 @@ export function KycVerificationScreen() {
 
           {flow === 'employee' && !celebrating ? (
             aadhaar.approved ? (
-              <WorkEmailStep email={workEmail} />
+              <WorkEmailStep
+                email={workEmail}
+                workProof={workProof}
+                method={employeeMethod}
+                companyName={companyName}
+                onEditProfile={editProfile}
+              />
             ) : (
-              <LockedStep icon="mail-outline" title="Verify your work email" />
+              <LockedStep icon="mail-outline" title="Verify your company" />
             )
           ) : null}
 
@@ -153,8 +175,8 @@ export function KycVerificationScreen() {
           ) : null}
 
           <KycTrustSection flow={flow} />
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </KeyboardAwareScrollView>
+      </View>
     </SafeAreaView>
   );
 }

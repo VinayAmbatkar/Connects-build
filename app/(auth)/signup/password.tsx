@@ -28,6 +28,10 @@ import { useSignupStore } from '@/src/store/signupStore';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
 import { appAlert } from '@/src/components/AppDialog';
+import { LEGAL } from '@/src/constants/app';
+import { openInApp } from '@/src/utils/openInApp';
+
+const AGREE_REQUIRED = 'You must agree to the Terms and Privacy Policy.';
 const signupHero = require('../../../assets/images/Onboarding/loginimg-bg.webp');
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BRAND = '#F57D01';
@@ -94,7 +98,17 @@ export default function SignupPasswordScreen() {
   const allValid =
     checks.length && checks.upper && checks.number && checks.special && checks.match;
 
+  // Same rule as web signup: no account without accepting the Terms and
+  // Privacy Policy.
+  const [agreed, setAgreed] = useState(false);
+  const [agreeError, setAgreeError] = useState(false);
+
   const createAccountAndContinue = async () => {
+    if (!agreed) {
+      setAgreeError(true);
+      appAlert('Terms and Privacy Policy', AGREE_REQUIRED);
+      return;
+    }
     if (!allValid) {
       appAlert('Password', 'Please meet all password requirements and confirm it.');
       return;
@@ -141,7 +155,9 @@ export default function SignupPasswordScreen() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        // Android runs edge-to-edge, so the window no longer resizes for the
+        // keyboard -- pad on both platforms (same as ChatScreen).
+        behavior="padding"
         keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
       >
         <ScrollView
@@ -187,7 +203,6 @@ export default function SignupPasswordScreen() {
                 <BrandHeader showMadeInBharath />
               </View>
               <Text style={styles.pageTitle}>Sign Up</Text>
-              <Text style={styles.pageSub}>Create your account and get started</Text>
             </View>
           </View>
 
@@ -240,6 +255,34 @@ export default function SignupPasswordScreen() {
               }
             />
 
+            <Pressable
+              style={styles.termsRow}
+              onPress={() => {
+                setAgreed((v) => !v);
+                setAgreeError(false);
+              }}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: agreed }}
+              accessibilityLabel="I agree to the Terms and Privacy Policy"
+              hitSlop={6}
+            >
+              <View style={[styles.checkbox, agreed && styles.checkboxOn, agreeError && styles.checkboxError]}>
+                {agreed ? <Ionicons name="checkmark" size={14} color={colors.white} /> : null}
+              </View>
+              <Text style={styles.termsText}>
+                I agree to the{' '}
+                <Text style={styles.termsLink} onPress={() => openInApp(LEGAL.termsUrl)}>
+                  Terms
+                </Text>{' '}
+                and{' '}
+                <Text style={styles.termsLink} onPress={() => openInApp(LEGAL.privacyUrl)}>
+                  Privacy Policy
+                </Text>
+                .
+              </Text>
+            </Pressable>
+            {agreeError ? <Text style={styles.termsError}>{AGREE_REQUIRED}</Text> : null}
+
             <View style={styles.bottomGroup}>
               <View style={styles.footer}>
                 <Pressable
@@ -255,10 +298,11 @@ export default function SignupPasswordScreen() {
                   accessibilityRole="button"
                   onPress={createAccountAndContinue}
                   disabled={loading}
+                  accessibilityState={{ disabled: loading || !agreed }}
                   style={({ pressed }) => [
                     styles.submitBtn,
                     pressed && styles.pressed,
-                    loading && styles.submitDisabled,
+                    (loading || !agreed) && styles.submitDisabled,
                   ]}
                 >
                   {loading ? (
@@ -283,6 +327,39 @@ export default function SignupPasswordScreen() {
 }
 
 const styles = StyleSheet.create({
+  termsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginTop: spacing.xs,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    marginTop: 1,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxOn: { borderColor: BRAND, backgroundColor: BRAND },
+  checkboxError: { borderColor: colors.danger },
+  termsText: {
+    flex: 1,
+    fontFamily: typography.fontFamily.regular,
+    fontSize: typography.size.sm,
+    lineHeight: 20,
+    color: colors.textSecondary,
+  },
+  termsLink: { fontFamily: typography.fontFamily.semibold, color: BRAND },
+  termsError: {
+    marginTop: spacing.xs,
+    fontFamily: typography.fontFamily.regular,
+    fontSize: typography.size.xs,
+    color: colors.danger,
+  },
   safe: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
   content: {
@@ -337,12 +414,6 @@ const styles = StyleSheet.create({
     lineHeight: 32,
     color: colors.text,
     letterSpacing: -0.4,
-  },
-  pageSub: {
-    marginTop: 4,
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 13,
-    color: colors.textSecondary,
   },
   body: {
     flexGrow: 1,

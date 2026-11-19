@@ -1,11 +1,14 @@
 import { useLocalSearchParams } from 'expo-router';
-import { PublicProfileScreen } from '@/src/features/profile/PublicProfileScreen';
+import {
+  PublicProfileScreen,
+  type ProfileFocus,
+} from '@/src/features/profile/PublicProfileScreen';
 import { ErrorState } from '@/src/components/EmptyState';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@/src/theme/tokens';
 
 export default function PublicProfileRoute() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, focus } = useLocalSearchParams<{ id: string; focus?: string }>();
 
   if (!id) {
     return (
@@ -15,5 +18,9 @@ export default function PublicProfileRoute() {
     );
   }
 
-  return <PublicProfileScreen userId={String(id)} />;
+  // Set by notification taps (see routeForNotification).
+  const focusSection: ProfileFocus | undefined =
+    focus === 'connection' || focus === 'credentials' ? focus : undefined;
+
+  return <PublicProfileScreen userId={String(id)} focus={focusSection} />;
 }

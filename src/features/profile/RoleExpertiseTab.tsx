@@ -1,17 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ExpertiseEditorSheet } from '@/src/features/profile/ExpertiseEditorSheet';
-import {
-  DisciplineTabs,
-  ExpertiseChip,
-  SectionActions,
-} from '@/src/features/profile/expertiseUi';
+import { DisciplineTabs, ExpertiseChip } from '@/src/features/profile/expertiseUi';
 import {
   filterSpecializationsByDiscipline,
   getSelectedOptions,
   getSelectedSpecializationsForDiscipline,
-  isIdSelected,
   normalizeOptions,
   optionIdsMatch,
   removeIdByMatch,
@@ -25,9 +20,13 @@ type Props = {
   form: ProfessionalProfile;
   options?: ProfileOptions;
   onChange: (next: ProfessionalProfile) => void;
+  /** Role / employment type block, shown above the expertise summary. */
+  roleSection?: ReactNode;
+  /** Inline "pick at least one discipline" error from Save. */
+  error?: string;
 };
 
-export function RoleExpertiseTab({ form, options, onChange }: Props) {
+export function RoleExpertiseTab({ form, options, onChange, roleSection, error }: Props) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [activeDisciplineId, setActiveDisciplineId] = useState<string | null>(null);
 
@@ -43,6 +42,13 @@ export function RoleExpertiseTab({ form, options, onChange }: Props) {
     selectedDisciplines.length > 0 ||
     (form.specializationIds?.length ?? 0) > 0 ||
     selectedProjectTypes.length > 0;
+
+  // Builders' disciplines (Buildings / Infrastructure) have no
+  // specialization tier -- show the disciplines themselves instead of an
+  // always-empty "Select specialization for ..." panel.
+  const hasSpecializationTier = selectedDisciplines.some(
+    (item) => filterSpecializationsByDiscipline(allSpecializations, item.id).length > 0,
+  );
 
   const activeDiscipline =
     selectedDisciplines.find((item) => optionIdsMatch(item.id, activeDisciplineId ?? '')) ??
@@ -85,55 +91,53 @@ export function RoleExpertiseTab({ form, options, onChange }: Props) {
     });
   };
 
-  const selectAllForActiveDiscipline = () => {
-    if (!activeDiscipline) return;
-    const scoped = filterSpecializationsByDiscipline(
-      allSpecializations,
-      activeDiscipline.id,
-    );
-    const merged = new Set([
-      ...(form.specializationIds ?? []),
-      ...scoped.map((item) => item.id),
-    ]);
-    onChange({ ...form, specializationIds: [...merged] });
-  };
-
-  const clearForActiveDiscipline = () => {
-    if (!activeDiscipline) return;
-    const scoped = filterSpecializationsByDiscipline(
-      allSpecializations,
-      activeDiscipline.id,
-    );
-    onChange({
-      ...form,
-      specializationIds: (form.specializationIds ?? []).filter(
-        (id) => !scoped.some((item) => isIdSelected([id], item.id)),
-      ),
-    });
-  };
-
   return (
     <View>
       <View style={styles.sectionHeading}>
-        <Text style={styles.sectionTitle}>Role & Expertise</Text>
-        <Text style={styles.sectionSubtitle}>
-          Tell us what you do and where you specialize
-        </Text>
+        <View style={styles.headingCopy}>
+          <Text style={styles.sectionTitle}>Role & Expertise</Text>
+          <Text style={styles.sectionSubtitle}>
+            Tell us what you do and where you specialize.
+          </Text>
+        </View>
+        {hasExpertise ? (
+          <Pressable
+            style={styles.editBtn}
+            onPress={() => setSheetOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Edit expertise"
+            hitSlop={6}
+          >
+            <Ionicons name="pencil" size={14} color={colors.primary} />
+            <Text style={styles.editBtnText}>Edit</Text>
+          </Pressable>
+        ) : null}
       </View>
+
+      {roleSection}
+
+      <Text style={styles.fieldLabel}>
+        Discipline & expertise<Text style={styles.required}> *</Text>
+      </Text>
 
       {hasExpertise ? (
         <View style={styles.summaryWrap}>
-          {selectedDisciplines.length ? (
+          {selectedDisciplines.length && !hasSpecializationTier ? (
+            <View style={styles.panel}>
+              <Text style={styles.panelTitle}>Disciplines</Text>
+              <View style={[styles.chipRow, { marginTop: spacing.sm }]}>
+                {selectedDisciplines.map((item) => (
+                  <ExpertiseChip key={item.id} label={item.label} />
+                ))}
+              </View>
+            </View>
+          ) : null}
+
+          {selectedDisciplines.length && hasSpecializationTier ? (
             <View style={styles.panel}>
               <View style={styles.panelHeader}>
-                <View>
-                  <Text style={styles.panelTitle}>Specialization</Text>
-                  <Text style={styles.panelHint}>Based on selected discipline</Text>
-                </View>
-                <SectionActions
-                  onSelectAll={selectAllForActiveDiscipline}
-                  onClear={clearForActiveDiscipline}
-                />
+                <Text style={styles.panelTitle}>Specialization</Text>
+                <Text style={styles.panelHint}>Based on selected discipline</Text>
               </View>
 
               <DisciplineTabs
@@ -186,11 +190,6 @@ export function RoleExpertiseTab({ form, options, onChange }: Props) {
               </View>
             </View>
           ) : null}
-
-          <Pressable style={styles.editBtn} onPress={() => setSheetOpen(true)}>
-            <Ionicons name="create-outline" size={18} color={colors.primary} />
-            <Text style={styles.editBtnText}>Edit expertise</Text>
-          </Pressable>
         </View>
       ) : (
         <Pressable style={styles.addCard} onPress={() => setSheetOpen(true)}>
@@ -203,6 +202,7 @@ export function RoleExpertiseTab({ form, options, onChange }: Props) {
           </Text>
         </Pressable>
       )}
+      {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <ExpertiseEditorSheet
         visible={sheetOpen}
@@ -218,7 +218,13 @@ export function RoleExpertiseTab({ form, options, onChange }: Props) {
 
 const styles = StyleSheet.create({
   sectionHeading: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
     marginBottom: spacing.md,
+  },
+  headingCopy: {
+    flex: 1,
   },
   sectionTitle: {
     fontFamily: typography.fontFamily.bold,
@@ -242,10 +248,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
   },
   panelHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
     marginBottom: spacing.sm,
   },
   panelTitle: {
@@ -283,19 +285,33 @@ const styles = StyleSheet.create({
   editBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: spacing.sm,
-    paddingVertical: 12,
-    borderRadius: radius.md,
-    borderWidth: 1.5,
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radius.full,
+    borderWidth: 1,
     borderColor: colors.primary,
-    backgroundColor: colors.white,
+    backgroundColor: colors.primaryMuted,
   },
   editBtnText: {
     fontFamily: typography.fontFamily.semibold,
     fontSize: typography.size.sm,
     color: colors.primary,
+  },
+  fieldLabel: {
+    marginBottom: spacing.sm,
+    fontFamily: typography.fontFamily.semibold,
+    fontSize: typography.size.sm,
+    color: colors.text,
+  },
+  required: {
+    color: colors.danger,
+  },
+  error: {
+    marginTop: spacing.xs,
+    fontFamily: typography.fontFamily.regular,
+    fontSize: typography.size.xs,
+    color: colors.danger,
   },
   addCard: {
     alignItems: 'center',

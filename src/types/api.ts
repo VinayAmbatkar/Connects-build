@@ -46,6 +46,11 @@ export type ProfessionalProfile = {
   socialMedia?: string;
   awards?: number;
   gstNumber?: string;
+  businessCategory?: string;
+  businessSize?: string;
+  establishmentYear?: number;
+  aboutBusiness?: string;
+  workEmail?: string;
   disciplineIds?: string[];
   specializationIds?: string[];
   projectTypeIds?: string[];
@@ -60,6 +65,9 @@ export type ProfessionalProfile = {
   /** Profile badge (models.User.Verified) -- true once Aadhaar OKYC or a
    *  manual verification is approved. */
   verified?: boolean;
+  /** Company, role and a discipline are saved -- the backend's
+   *  PROFILE_INCOMPLETE gate lifts once this is true. */
+  profileComplete?: boolean;
   /** BUSINESS_OWNER | EMPLOYEE | INDIVIDUAL_CONSULTANT for Consultants/Contractors/Vendors. */
   employmentType?: string;
   /** @deprecated never sent by the backend; use `verified`. */
@@ -271,6 +279,8 @@ export type Connection = {
   otherPartyCompany?: string;
   otherPartyLocation?: string;
   otherPartyBio?: string;
+  /** The other person's profile badge. */
+  otherPartyVerified?: boolean;
   createdAt?: string;
   updatedAt?: string;
   [key: string]: unknown;
@@ -299,6 +309,8 @@ export type ProfessionalSearchResult = {
   disciplineIds?: string[];
   serviceLocations?: string[];
   firmLocationIds?: string[];
+  /** Profile badge (same rule as the profile page). */
+  verified?: boolean;
   [key: string]: unknown;
 };
 
@@ -309,7 +321,10 @@ export type Project = {
   description?: string;
   locationId?: string;
   sizeSqft?: number;
+  sizeUnit?: 'SQFT' | 'SQM' | string;
+  awards?: string;
   photos?: string[];
+  photoUrls?: string[];
   startDate?: string;
   endDate?: string;
   skills?: string[];
@@ -363,7 +378,7 @@ export type SupportCase = {
 };
 
 /** Verification types matching backend */
-export type VerificationRequestType = 'AADHAAR' | 'GST_TAN' | 'LICENSE' | 'EMPLOYEE' | 'INDIVIDUAL_CONSULTANT';
+export type VerificationRequestType = 'AADHAAR' | 'GST_TAN' | 'LICENSE' | 'EMPLOYEE' | 'INDIVIDUAL_CONSULTANT' | 'EMPLOYEE_WORK_PROOF';
 export type VerificationStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type GSTVerificationStatus = 'PENDING' | 'VERIFIED' | 'MISMATCH' | 'INACTIVE' | 'FAILED' | '';
 
@@ -411,6 +426,8 @@ export interface VerificationRequestSummary {
   maskedNumber?: string;
   maskedLicenseNumber?: string;
   documentUrls?: string[];
+  /** EMPLOYEE_WORK_PROOF only: OFFER_LETTER | OFFICE_ID (older requests may say PAYMENT_SLIP). */
+  workProofType?: string;
   rejectionReason?: string;
   submittedAt: string;
   reviewedAt?: string;
@@ -420,6 +437,29 @@ export interface EmployeeEmailVerificationStatus {
   email: string;
   verified: boolean;
   codePending: boolean;
+  organizationId?: string;
+  organizationName?: string;
+  companyNotListed?: boolean;
+  organizationHasNoDomains?: boolean;
+}
+
+/** GET /profile/verification/employee/method. EMAIL_OTP only when the
+ *  company's owner whitelisted email domains; otherwise WORK_PROOF. */
+export interface EmployeeVerificationMethod {
+  method: 'EMAIL_OTP' | 'WORK_PROOF';
+  reason?: 'NO_WHITELIST' | 'NOT_REGISTERED';
+  organizationId?: string;
+  organizationName?: string;
+  emailDomains?: string[];
+  message?: string;
+}
+
+export interface EmployeeWorkProofSubmission {
+  legalName: string;
+  companyEmail: string;
+  unlistedCompanyName: string;
+  workProofType: 'OFFER_LETTER' | 'OFFICE_ID';
+  documents: { uri: string; name: string; type: string }[];
 }
 
 export interface VerificationStatusResponse {
@@ -431,6 +471,7 @@ export interface VerificationStatusResponse {
   employee: VerificationRequestSummary | null;
   /** Individual Consultant's licence + proof-of-consultancy review. */
   individualConsultant?: VerificationRequestSummary | null;
+  employeeWorkProof?: VerificationRequestSummary | null;
   employeeEmail: EmployeeEmailVerificationStatus | null;
   gst: GSTVerificationResult | null;
 }

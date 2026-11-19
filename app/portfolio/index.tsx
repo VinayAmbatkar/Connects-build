@@ -1,4 +1,5 @@
 import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { usePullToRefresh } from '@/src/hooks/usePullToRefresh';
 import * as ImagePicker from 'expo-image-picker';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/src/components/Button';
@@ -11,6 +12,7 @@ import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 import { appAlert } from '@/src/components/AppDialog';
 import { ListSkeleton } from '@/src/components/Skeleton';
 export default function PortfolioScreen() {
+  const pull = usePullToRefresh();
   const user = useAuthStore((s) => s.user);
   const userId = user?.id;
   const queryClient = useQueryClient();
@@ -76,6 +78,7 @@ export default function PortfolioScreen() {
         />
       </View>
       <FlatList
+        refreshControl={pull.refreshControl}
         data={data as Array<{ id?: string | number; url?: string }>}
         keyExtractor={(item, index) => String(item.id ?? index)}
         contentContainerStyle={data.length === 0 ? styles.empty : styles.list}

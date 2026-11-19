@@ -7,13 +7,13 @@ import {
   Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardAwareScrollView } from '@/src/components/KeyboardAwareScrollView';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
 type Props = {
@@ -230,7 +230,10 @@ export function BottomSheet({
               <Ionicons name="close" size={22} color={colors.textSecondary} />
             </Pressable>
           </View>
-          <ScrollView
+          <KeyboardAwareScrollView
+            // The sheet itself lifts above the keyboard; this only scrolls
+            // the focused field into the visible part of the sheet.
+            padForKeyboard={false}
             style={[styles.body, tall && styles.bodyTall]}
             contentContainerStyle={styles.bodyContent}
             keyboardShouldPersistTaps="handled"
@@ -238,7 +241,7 @@ export function BottomSheet({
             keyboardDismissMode="interactive"
           >
             {children}
-          </ScrollView>
+          </KeyboardAwareScrollView>
           {footer ? <View style={styles.footer}>{footer}</View> : null}
           </Animated.View>
         </Animated.View>

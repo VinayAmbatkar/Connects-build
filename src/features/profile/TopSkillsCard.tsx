@@ -14,9 +14,14 @@ export function TopSkillsCard({ skills, onPress }: Props) {
   const suffix = skills.length > 4 ? '...' : '';
 
   return (
-    <Pressable onPress={onPress} style={styles.card}>
+    <Pressable
+      onPress={onPress}
+      style={styles.card}
+      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityLabel={onPress ? 'View all top skills' : undefined}
+    >
       <View style={styles.iconWrap}>
-        <Ionicons name="diamond-outline" size={18} color={colors.textSecondary} />
+        <Ionicons name="construct-outline" size={18} color={colors.textSecondary} />
       </View>
       <View style={styles.copy}>
         <Text style={styles.title}>Top skills</Text>

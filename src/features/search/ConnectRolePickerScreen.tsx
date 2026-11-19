@@ -117,9 +117,10 @@ export function ConnectRolePickerScreen() {
     });
   }, [roles, query]);
 
-  const continueNext = () => {
-    if (!selected) return;
-    setRole(toCategoryRole(selected));
+  // Tapping a card picks it and moves straight to the next step.
+  const chooseRole = (value: string) => {
+    setSelected(value);
+    setRole(toCategoryRole(value));
     router.push('/connect/wizard' as Href);
   };
 
@@ -207,7 +208,7 @@ export function ConnectRolePickerScreen() {
           })}
         </View>
 
-        <Text style={styles.stepOf}>STEP 1 OF 4</Text>
+        <Text style={styles.stepOf}>STEP 1 OF 4 · TAP A ROLE TO CONTINUE</Text>
 
         <View style={styles.grid}>
           {filtered.map((role) => {
@@ -215,38 +216,15 @@ export function ConnectRolePickerScreen() {
             return (
               <Pressable
                 key={role.value}
-                onPress={() => setSelected(role.value)}
+                onPress={() => chooseRole(role.value)}
+                accessibilityRole="button"
+                accessibilityLabel={`Find ${role.label}s`}
                 style={[
                   styles.card,
                   { backgroundColor: role.theme.bg },
                   isSelected && styles.cardSelected,
                 ]}
               >
-                <View style={styles.cardTop}>
-                  <View
-                    style={[
-                      styles.cardIcon,
-                      { backgroundColor: role.theme.tagBg },
-                    ]}
-                  >
-                    <Ionicons
-                      name={role.theme.icon}
-                      size={14}
-                      color={role.theme.tagText}
-                    />
-                  </View>
-                  <View
-                    style={[
-                      styles.radio,
-                      isSelected && styles.radioSelected,
-                    ]}
-                  >
-                    {isSelected ? (
-                      <Ionicons name="checkmark" size={12} color={colors.white} />
-                    ) : null}
-                  </View>
-                </View>
-
                 {role.image ? (
                   <Image
                     source={role.image}
@@ -257,7 +235,7 @@ export function ConnectRolePickerScreen() {
                   <View style={styles.roleImageFallback}>
                     <Ionicons
                       name="people-outline"
-                      size={28}
+                      size={40}
                       color={role.theme.tagText}
                     />
                   </View>
@@ -286,16 +264,6 @@ export function ConnectRolePickerScreen() {
         </View>
       </ScrollView>
 
-      <View style={styles.footer}>
-        <Pressable
-          style={[styles.continueBtn, !selected && styles.continueDisabled]}
-          disabled={!selected}
-          onPress={continueNext}
-        >
-          <Text style={styles.continueText}>Continue</Text>
-          <Ionicons name="arrow-forward" size={16} color={colors.white} />
-        </Pressable>
-      </View>
     </SafeAreaView>
   );
 }
@@ -305,7 +273,7 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.xl,
   },
   titleRow: {
     flexDirection: 'row',
@@ -432,39 +400,13 @@ const styles = StyleSheet.create({
   cardSelected: {
     borderColor: colors.primary,
   },
-  cardTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  cardIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radio: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 1.5,
-    borderColor: '#CBD5E1',
-    backgroundColor: colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radioSelected: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primary,
-  },
   roleImage: {
     width: '100%',
-    height: 56,
-    marginTop: 0,
+    height: 104,
+    marginBottom: 4,
   },
   roleImageFallback: {
-    height: 56,
+    height: 104,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -494,30 +436,5 @@ const styles = StyleSheet.create({
   tagText: {
     fontFamily: typography.fontFamily.medium,
     fontSize: 9,
-  },
-  footer: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-    backgroundColor: colors.white,
-  },
-  continueBtn: {
-    minHeight: 46,
-    borderRadius: radius.full,
-    backgroundColor: colors.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  continueDisabled: {
-    opacity: 0.45,
-  },
-  continueText: {
-    fontFamily: typography.fontFamily.bold,
-    fontSize: typography.size.sm,
-    color: colors.white,
   },
 });

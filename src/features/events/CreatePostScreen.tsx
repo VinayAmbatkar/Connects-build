@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Image,
   KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -357,7 +356,9 @@ export function CreatePostScreen() {
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        // Android runs edge-to-edge, so the window no longer resizes for the
+        // keyboard -- pad on both platforms (same as ChatScreen).
+        behavior="padding"
       >
         <View style={styles.header}>
           <Pressable

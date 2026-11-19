@@ -1,6 +1,7 @@
 import { alertApiError } from '@/src/features/billing/featureLocked';
 import { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAwareScrollView } from '@/src/components/KeyboardAwareScrollView';
 import { useMutation } from '@tanstack/react-query';
 import { Button } from '@/src/components/Button';
 import { TextField } from '@/src/components/TextField';
@@ -63,7 +64,7 @@ export function SettingsPasswordScreen() {
   };
 
   return (
-    <ScrollView
+    <KeyboardAwareScrollView
       style={styles.screen}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
@@ -105,7 +106,7 @@ export function SettingsPasswordScreen() {
         onPress={submit}
         loading={mutation.isPending}
       />
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

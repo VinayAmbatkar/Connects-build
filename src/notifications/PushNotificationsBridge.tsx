@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 import type { NotificationResponse } from 'expo-notifications';
 import { router } from 'expo-router';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { accountApi } from '@/src/api/account';
 import { notificationsApi } from '@/src/api/notifications';
 import { useAuthStore } from '@/src/store/authStore';
 import {
@@ -16,7 +17,7 @@ import {
  * the root layout, inside the QueryClientProvider. Does nothing when the
  * build has no expo-notifications native code (see push.ts).
  *
- * - Registers the device token whenever someone is logged in.
+ * - Registers the device token for logged-in accounts with notifications enabled.
  * - Refreshes the notification list/badge when a push arrives in the
  *   foreground.
  * - Opens the right screen when a notification is tapped, including the
@@ -27,10 +28,23 @@ export function PushNotificationsBridge() {
   const accessToken = useAuthStore((s) => s.accessToken);
   const userId = useAuthStore((s) => s.user?.id);
   const isLoggedIn = Boolean(accessToken);
+  const generalQuery = useQuery({
+    queryKey: ['general'],
+    queryFn: accountApi.getGeneral,
+    enabled: isLoggedIn,
+  });
+  const notificationsEnabled = generalQuery.data?.notificationsEnabled;
   const handled = useRef(new Set<string>());
 
   useEffect(() => {
-    if (!Notifications || !isLoggedIn) return;
+    if (
+      !Notifications ||
+      !isLoggedIn ||
+      generalQuery.isPending ||
+      notificationsEnabled === false
+    ) {
+      return;
+    }
     void registerForPushAsync();
     // Tokens rarely rotate, but when they do the old one stops working.
     // This listener also fires every time a token is fetched (including by
@@ -48,13 +62,19 @@ export function PushNotificationsBridge() {
     });
     return () => sub.remove();
     // userId: re-register when a different account logs in.
-  }, [isLoggedIn, userId]);
+  }, [generalQuery.isPending, isLoggedIn, notificationsEnabled, userId]);
 
   useEffect(() => {
     if (!Notifications) return;
-    const sub = Notifications.addNotificationReceivedListener(() => {
+    const sub = Notifications.addNotificationReceivedListener((notification) => {
       void queryClient.invalidateQueries({ queryKey: ['notifications'] });
       void queryClient.invalidateQueries({ queryKey: ['notifications-unread'] });
+      // A verification review changes the Get Verified screen and badge.
+      const type = (notification.request.content.data as { type?: string } | undefined)?.type;
+      if (type === 'VERIFICATION_APPROVED' || type === 'VERIFICATION_REJECTED') {
+        void queryClient.invalidateQueries({ queryKey: ['verification-status'] });
+        void queryClient.invalidateQueries({ queryKey: ['my-profile'] });
+      }
     });
     return () => sub.remove();
   }, [queryClient]);

@@ -9,6 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { VerifiedName } from '@/src/components/VerifiedName';
 import { router, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -252,7 +253,7 @@ export function ConnectionsScreen() {
           />
         }
       >
-        <Text style={styles.title}>Network</Text>
+        <Text style={styles.title}>My Connections</Text>
 
         <View style={styles.tabs}>
           <TopTab
@@ -607,7 +608,7 @@ function RequestRow({
       <Pressable onPress={onPress} style={styles.rowTop}>
         <Avatar name={name} size={52} />
         <View style={styles.rowCopy}>
-          <Text style={styles.rowName}>{name}</Text>
+          <VerifiedName name={name} verified={item.otherPartyVerified} style={styles.rowName} />
           {headline ? (
             <Text style={styles.rowHeadline} numberOfLines={1}>
               {headline}
@@ -673,7 +674,7 @@ function SuggestionRow({
       <Pressable onPress={onPress} style={styles.rowTop}>
         <Avatar name={item.name} size={52} />
         <View style={styles.rowCopy}>
-          <Text style={styles.rowName}>{item.name}</Text>
+          <VerifiedName name={item.name} verified={item.verified} style={styles.rowName} />
           {headline ? (
             <Text style={styles.rowHeadline} numberOfLines={1}>
               {headline}
@@ -726,7 +727,7 @@ function SentRow({
       <Pressable onPress={onPress} style={styles.rowTop}>
         <Avatar name={name} size={52} />
         <View style={styles.rowCopy}>
-          <Text style={styles.rowName}>{name}</Text>
+          <VerifiedName name={name} verified={item.otherPartyVerified} style={styles.rowName} />
           {headline ? (
             <Text style={styles.rowHeadline} numberOfLines={1}>
               {headline}
@@ -780,7 +781,7 @@ function ConnectionRow({
       <View style={styles.rowTop}>
         <Avatar name={name} size={52} />
         <View style={styles.rowCopy}>
-          <Text style={styles.rowName}>{name}</Text>
+          <VerifiedName name={name} verified={item.otherPartyVerified} style={styles.rowName} />
           {headline ? (
             <Text style={styles.rowHeadline} numberOfLines={1}>
               {headline}

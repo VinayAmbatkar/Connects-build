@@ -28,11 +28,12 @@ const NAV_ITEMS: Array<{
 }> = [
   { label: 'Home', icon: 'home-outline', href: '/(tabs)/feed' },
   { label: 'Discover', icon: 'search-outline', href: '/(tabs)/vendors' },
-  { label: 'Network', icon: 'people-circle-outline', href: '/(tabs)/connect' as Href },
-  { label: 'Connection', icon: 'people-outline', href: '/(tabs)/network' },
+  { label: 'Connect', icon: 'people-circle-outline', href: '/(tabs)/connect' as Href },
+  { label: 'My Connections', icon: 'people-outline', href: '/(tabs)/network' },
   { label: 'Messages', icon: 'chatbubble-ellipses-outline', href: '/(tabs)/messages' },
   { label: 'My Profile', icon: 'person-outline', href: '/(tabs)/profile' },
   { label: 'Saved profiles', icon: 'bookmark-outline', href: '/favourites' as Href },
+  { label: 'My advertisement', icon: 'megaphone-outline', href: '/ads' as Href },
   { label: 'Plans & billing', icon: 'card-outline', href: '/premium' as Href },
 ];
 

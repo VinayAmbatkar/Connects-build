@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Keyboard,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -11,6 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardAwareScrollView } from '@/src/components/KeyboardAwareScrollView';
 import { router } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -73,15 +73,10 @@ export function EditAboutScreen() {
   if (profileQuery.isLoading) return <DetailSkeleton />;
 
   const counterLabel = `${bio.length.toLocaleString()}/${BIO_MAX_LENGTH.toLocaleString()}`;
-  const headerOffset = insets.top + (Platform.OS === 'ios' ? 44 : 56);
 
   return (
-    <KeyboardAvoidingView
-      style={styles.screen}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={headerOffset}
-    >
-      <ScrollView
+    <View style={styles.screen}>
+      <KeyboardAwareScrollView
         ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={[
@@ -90,7 +85,6 @@ export function EditAboutScreen() {
         ]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        automaticallyAdjustKeyboardInsets
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.hint}>
@@ -137,8 +131,8 @@ export function EditAboutScreen() {
             <Text style={styles.saveText}>Save</Text>
           )}
         </Pressable>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
+    </View>
   );
 }
 

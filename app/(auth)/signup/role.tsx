@@ -1,23 +1,18 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect } from 'react';
 import {
   Dimensions,
-  FlatList,
   Image,
-  NativeScrollEvent,
-  NativeSyntheticEvent,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
-  type ListRenderItemInfo,
 } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BrandHeader } from '@/src/features/onboarding/BrandHeader';
-import { BrandTaglineFooter } from '@/src/components/BrandTaglineFooter';
 import { SignupAccountFooter } from '@/src/components/SignupAccountFooter';
 import { StepProgress } from '@/src/components/StepProgress';
 import { DEFAULT_ROLES, type AppRole } from '@/src/constants/app';
@@ -28,79 +23,29 @@ import { appAlert } from '@/src/components/AppDialog';
 const signupHero = require('../../../assets/images/Onboarding/loginimg-bg.webp');
 const BRAND = '#F57D01';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CARD_WIDTH = Math.min(SCREEN_WIDTH * 0.72, 280);
-const CARD_GAP = 16;
-const SIDE_PAD = (SCREEN_WIDTH - CARD_WIDTH) / 2;
 
 type RoleOption = AppRole;
 
 export default function SignupRoleScreen() {
   const draft = useSignupStore((s) => s.draft);
   const update = useSignupStore((s) => s.update);
-  const listRef = useRef<FlatList<RoleOption>>(null);
-  const [index, setIndex] = useState(0);
   const insets = useSafeAreaInsets();
   const roles: RoleOption[] = DEFAULT_ROLES;
 
   useEffect(() => {
     if (!draft.role && roles[0]) {
       update({ role: roles[0].value });
-      setIndex(0);
-      return;
-    }
-    if (draft.role) {
-      const i = roles.findIndex((r) => r.value === draft.role);
-      if (i >= 0) setIndex(i);
     }
   }, [draft.role, roles, update]);
 
-  const selectRole = (value: string, i: number) => {
-    update({ role: value });
-    setIndex(i);
-    listRef.current?.scrollToOffset({
-      offset: i * (CARD_WIDTH + CARD_GAP),
-      animated: true,
-    });
-  };
-
-  const onScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const next = Math.round(e.nativeEvent.contentOffset.x / (CARD_WIDTH + CARD_GAP));
-    const clamped = Math.max(0, Math.min(next, roles.length - 1));
-    setIndex(clamped);
-    const role = roles[clamped];
-    if (role) update({ role: role.value });
-  };
-
   const continueNext = () => {
-    const selected = draft.role || roles[index]?.value;
+    const selected = draft.role || roles[0]?.value;
     if (!selected) {
       appAlert('Select a role', 'Choose the role that best describes you.');
       return;
     }
     if (!draft.role) update({ role: selected });
     router.push('/(auth)/signup/password');
-  };
-
-  const renderItem = ({ item, index: i }: ListRenderItemInfo<RoleOption>) => {
-    const selected = (draft.role || roles[index]?.value) === item.value;
-    return (
-      <Pressable
-        onPress={() => selectRole(item.value, i)}
-        style={[styles.card, selected && styles.cardSelected, { width: CARD_WIDTH }]}
-      >
-        <View style={styles.artWrap}>
-          {item.image != null ? (
-            <Image source={item.image} style={styles.artImage} resizeMode="contain" />
-          ) : (
-            <View style={styles.artFallback}>
-              <Ionicons name={item.icon ?? 'person-outline'} size={64} color={BRAND} />
-            </View>
-          )}
-        </View>
-        <Text style={styles.cardTitle}>{item.label}</Text>
-        <Text style={styles.cardDesc}>{item.description}</Text>
-      </Pressable>
-    );
   };
 
   return (
@@ -142,7 +87,6 @@ export default function SignupRoleScreen() {
               <BrandHeader showMadeInBharath />
             </View>
             <Text style={styles.pageTitle}>Sign Up</Text>
-            <Text style={styles.pageSub}>Create your account and get started</Text>
           </View>
         </View>
 
@@ -160,28 +104,37 @@ export default function SignupRoleScreen() {
           </View>
         </View>
 
-        <FlatList
-          ref={listRef}
-          data={roles}
-          keyExtractor={(item) => item.value}
-          horizontal
-          scrollEnabled
-          nestedScrollEnabled
-          showsHorizontalScrollIndicator={false}
-          snapToInterval={CARD_WIDTH + CARD_GAP}
-          decelerationRate="fast"
-          contentContainerStyle={{ paddingHorizontal: SIDE_PAD }}
-          ItemSeparatorComponent={() => <View style={{ width: CARD_GAP }} />}
-          onMomentumScrollEnd={onScrollEnd}
-          renderItem={renderItem}
-          onScrollToIndexFailed={() => undefined}
-          style={styles.carousel}
-        />
-
-        <View style={styles.dots}>
-          {roles.map((role, i) => (
-            <View key={role.value} style={[styles.dot, i === index && styles.dotActive]} />
-          ))}
+        <View style={styles.roleList}>
+          {roles.map((item) => {
+            const selected = (draft.role || roles[0]?.value) === item.value;
+            return (
+              <Pressable
+                key={item.value}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: selected }}
+                accessibilityLabel={`${item.label}: ${item.description}`}
+                onPress={() => update({ role: item.value })}
+                style={[styles.roleCard, selected && styles.roleCardSelected]}
+              >
+                <View style={styles.roleAvatar}>
+                  {item.image != null ? (
+                    <Image source={item.image} style={styles.roleAvatarImage} resizeMode="contain" />
+                  ) : (
+                    <Ionicons name={item.icon ?? 'person-outline'} size={28} color={BRAND} />
+                  )}
+                </View>
+                <View style={styles.roleCopy}>
+                  <Text style={styles.cardTitle}>{item.label}</Text>
+                  <Text style={styles.cardDesc} numberOfLines={2}>{item.description}</Text>
+                </View>
+                {selected ? (
+                  <View style={styles.selectedCheck}>
+                    <Ionicons name="checkmark" size={16} color={colors.white} />
+                  </View>
+                ) : null}
+              </Pressable>
+            );
+          })}
         </View>
 
         <View style={styles.bottomGroup}>
@@ -206,7 +159,6 @@ export default function SignupRoleScreen() {
           </View>
 
           <SignupAccountFooter />
-          <BrandTaglineFooter />
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -268,12 +220,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     letterSpacing: -0.4,
   },
-  pageSub: {
-    marginTop: 4,
-    fontFamily: typography.fontFamily.regular,
-    fontSize: 13,
-    color: colors.textSecondary,
-  },
   body: {
     paddingHorizontal: spacing.lg,
     marginTop: spacing.sm,
@@ -309,75 +255,66 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: colors.textSecondary,
   },
-  carousel: {
-    flexGrow: 0,
+  roleList: {
+    paddingHorizontal: spacing.lg,
+    gap: 7,
   },
-  card: {
+  roleCard: {
+    minHeight: 68,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: radius.xl,
     borderWidth: 1.5,
     borderColor: colors.border,
     backgroundColor: colors.white,
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.md,
-    alignItems: 'center',
-    minHeight: 320,
   },
-  cardSelected: {
+  roleCardSelected: {
     borderColor: BRAND,
   },
-  artWrap: {
-    width: '100%',
-    height: 180,
+  roleAvatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.md,
+    overflow: 'hidden',
   },
-  artImage: {
-    width: CARD_WIDTH - 48,
-    height: 190,
+  roleAvatarImage: {
+    width: 52,
+    height: 52,
   },
-  artFallback: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#FFEAD5',
-    alignItems: 'center',
-    justifyContent: 'center',
+  roleCopy: {
+    flex: 1,
+    minWidth: 0,
   },
   cardTitle: {
     fontFamily: typography.fontFamily.bold,
-    fontSize: 20,
+    fontSize: 17,
+    lineHeight: 21,
     color: colors.text,
-    marginBottom: 6,
+    marginBottom: 2,
   },
   cardDesc: {
     fontFamily: typography.fontFamily.regular,
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 12,
+    lineHeight: 16,
     color: colors.textSecondary,
-    textAlign: 'center',
-    paddingHorizontal: 8,
   },
-  dots: {
-    flexDirection: 'row',
-    justifyContent: 'center',
+  selectedCheck: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: BRAND,
     alignItems: 'center',
-    gap: 8,
-    marginTop: spacing.xl,
+    justifyContent: 'center',
   },
   bottomGroup: {
     marginTop: 'auto',
     gap: spacing.md,
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.border,
-  },
-  dotActive: {
-    width: 22,
-    backgroundColor: BRAND,
   },
   footer: {
     paddingHorizontal: spacing.lg,

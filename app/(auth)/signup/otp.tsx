@@ -64,8 +64,15 @@ export default function SignupOtpScreen() {
     try {
       await authApi.verifyEmailOtp(draft.email.trim(), code);
       update({ emailVerified: true });
+      const isConsumer = draft.role.trim().toUpperCase() === 'CONSUMER';
       reset();
-      router.replace('/(auth)/signup-success');
+      router.replace(
+        // Consumers go straight to finding people -- their profile never
+        // blocks anything. Professionals finish their profile first.
+        isConsumer
+          ? '/(tabs)/connect'
+          : '/edit-profile?onboarding=1&tab=professional',
+      );
     } catch (error) {
       appAlert('Verification failed', getErrorMessage(error));
     } finally {

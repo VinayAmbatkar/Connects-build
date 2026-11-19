@@ -23,14 +23,6 @@ export const ONBOARDING_FEATURES = [
 
 export const ONBOARDING_SLIDES = [
   {
-    id: 'hero',
-    title: 'Connect. Collaborate. Construct.',
-    subtitle:
-      'One platform to connect with Designers, Engineers, Contractors, Builders and Vendors.',
-    chips: ONBOARDING_FEATURES.map((f) => f.label),
-    cta: 'Get Started',
-  },
-  {
     id: 'vendors',
     title: 'Connecting The Right Vendor, Consultant For Your Project.',
     subtitle:

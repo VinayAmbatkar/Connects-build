@@ -4,6 +4,8 @@ import type {
   AadhaarOTPGenerateResponse,
   AadhaarOTPVerifyResponse,
   GSTVerificationResult,
+  EmployeeWorkProofSubmission,
+  EmployeeVerificationMethod,
 } from '@/src/types/api';
 
 export const verificationApi = {
@@ -118,15 +120,41 @@ export const verificationApi = {
       .then((r) => r.data);
   },
 
+  // Employee Work Proof verification (when company has no whitelisted domains)
+  submitEmployeeWorkProof: (
+    data: EmployeeWorkProofSubmission
+  ) => {
+    const form = new FormData();
+    form.append('legalName', data.legalName);
+    form.append('companyEmail', data.companyEmail);
+    form.append('unlistedCompanyName', data.unlistedCompanyName);
+    form.append('workProofType', data.workProofType);
+    data.documents.forEach((doc) => form.append('documents', doc as any));
+    return apiClient
+      .post<{ status: string }>('/profile/verification/employee/work-proof', form, {
+        timeout: 60000,
+      })
+      .then((r) => r.data);
+  },
+
   // TrueID GST Simple verification
   submitGSTVerification: (gstNumber: string, legalBusinessName: string) =>
     apiClient
       .post<GSTVerificationResult>('/profile/verification/gst', { gstNumber, legalBusinessName })
       .then((r) => r.data),
 
-  // Employee email OTP
-  sendEmployeeEmailOTP: (email: string) =>
-    apiClient.post<{ message: string }>('/profile/verification/employee/email/otp/send', { email }).then((r) => r.data),
+  // Whether the employee's company uses the work email OTP (its owner
+  // whitelisted email domains) or the work proof upload.
+  getEmployeeMethod: (companyName: string) =>
+    apiClient
+      .get<EmployeeVerificationMethod>('/profile/verification/employee/method', { params: { companyName } })
+      .then((r) => r.data),
+
+  // Employee email OTP -- organizationId comes from getEmployeeMethod.
+  sendEmployeeEmailOTP: (email: string, organizationId: string) =>
+    apiClient
+      .post<{ message: string }>('/profile/verification/employee/email/otp/send', { email, organizationId })
+      .then((r) => r.data),
 
   verifyEmployeeEmailOTP: (email: string, code: string) =>
     apiClient.post<{ message: string }>('/profile/verification/employee/email/otp/verify', { email, code }).then((r) => r.data),

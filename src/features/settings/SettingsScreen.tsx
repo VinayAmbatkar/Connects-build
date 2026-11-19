@@ -7,6 +7,7 @@ import { Avatar } from '@/src/components/Avatar';
 import { LEGAL } from '@/src/constants/app';
 import { useAuthActions } from '@/src/hooks/useAuthActions';
 import { useAuthStore } from '@/src/store/authStore';
+import { formatRoleLabel } from '@/src/features/profile/profileFormat';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
 import { appAlert } from '@/src/components/AppDialog';
@@ -26,6 +27,7 @@ export function SettingsScreen() {
 
   const name = user?.fullName?.trim() || 'Member';
   const email = user?.email?.trim() || '';
+  const role = formatRoleLabel(user?.role) || 'Member';
 
   const inviteFriends = async () => {
     try {
@@ -132,7 +134,7 @@ export function SettingsScreen() {
           <Ionicons name="chevron-back" size={22} color={colors.text} />
         </Pressable>
         <Text style={styles.topTitle}>Settings</Text>
-        <View style={styles.backBtn} />
+        <View style={styles.topBarSpacer} />
       </View>
 
       <ScrollView
@@ -140,9 +142,15 @@ export function SettingsScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.profile}>
-          <Avatar name={name} size={88} />
-          <Text style={styles.name}>{name.split(' ')[0]}</Text>
-          {email ? <Text style={styles.email}>{email}</Text> : null}
+          <Avatar name={name} size={64} />
+          <View style={styles.profileInfo}>
+            <Text style={styles.name}>{name}</Text>
+            <View style={styles.roleRow}>
+              <Text style={styles.roleLabel}>ROLE</Text>
+              <Text style={styles.role}>{role}</Text>
+            </View>
+            {email ? <Text style={styles.email}>{email}</Text> : null}
+          </View>
         </View>
 
         <View style={styles.card}>
@@ -188,7 +196,7 @@ export function SettingsScreen() {
           </Pressable>
           <Text style={styles.legalDot}>·</Text>
           <Pressable onPress={() => openInApp(LEGAL.termsUrl)}>
-            <Text style={styles.legalLink}>Terms of Service</Text>
+            <Text style={styles.legalLink}>Terms &amp; Conditions</Text>
           </Pressable>
         </View>
       </ScrollView>
@@ -242,6 +250,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  topBarSpacer: {
+    width: 40,
+    height: 40,
+  },
   topTitle: {
     fontFamily: typography.fontFamily.semibold,
     fontSize: 17,
@@ -251,20 +263,39 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   profile: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: spacing.md,
+    gap: spacing.md,
+    paddingTop: spacing.sm,
     paddingBottom: spacing.lg,
   },
+  profileInfo: {
+    flex: 1,
+    gap: 4,
+  },
   name: {
-    marginTop: spacing.md,
     fontFamily: typography.fontFamily.bold,
-    fontSize: 22,
+    fontSize: 18,
     color: colors.text,
   },
+  roleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  roleLabel: {
+    fontFamily: typography.fontFamily.semibold,
+    fontSize: 10,
+    color: colors.textMuted,
+  },
+  role: {
+    fontFamily: typography.fontFamily.medium,
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
   email: {
-    marginTop: 4,
     fontFamily: typography.fontFamily.regular,
-    fontSize: 13,
+    fontSize: 12,
     color: colors.textMuted,
   },
   card: {

@@ -24,6 +24,8 @@ jest.mock('@/src/api/verification', () => ({
     submitGSTVerification: jest.fn(),
     sendEmployeeEmailOTP: jest.fn(),
     verifyEmployeeEmailOTP: jest.fn(),
+    getEmployeeMethod: jest.fn(),
+    submitEmployeeWorkProof: jest.fn(),
   },
 }));
 // The shared sheet only unmounts after its close animation; render it purely
@@ -399,10 +401,25 @@ describe('Business owner flow (Aadhaar + GST)', () => {
 });
 
 describe('Employee flow (Aadhaar + work email)', () => {
+  const otpMethod = {
+    method: 'EMAIL_OTP' as const,
+    organizationId: 'org-1',
+    organizationName: 'Rao Infra',
+    emailDomains: ['raoinfra.com'],
+  };
+  const workProofMethod = {
+    method: 'WORK_PROOF' as const,
+    reason: 'NO_WHITELIST' as const,
+    organizationName: 'Rao Infra',
+    message: 'The whitelisted work email is not provided by your business owner. Please upload your work proof.',
+  };
+
   it('verifies the company work email with a code', async () => {
+    api.getEmployeeMethod.mockResolvedValue(otpMethod);
     renderScreen({
       role: 'CONTRACTORS',
       employmentType: 'EMPLOYEE',
+      company: 'Rao Infra',
       status: emptyStatus({ aadhaar: approvedAadhaar }),
     });
 
@@ -415,7 +432,8 @@ describe('Employee flow (Aadhaar + work email)', () => {
     api.sendEmployeeEmailOTP.mockResolvedValue({ message: 'sent' });
     fireEvent.press(send);
     expect(await screen.findByTestId('email-otp-input')).toBeTruthy();
-    expect(api.sendEmployeeEmailOTP).toHaveBeenCalledWith('asha@raoinfra.com');
+    expect(api.getEmployeeMethod).toHaveBeenCalledWith('Rao Infra');
+    expect(api.sendEmployeeEmailOTP).toHaveBeenCalledWith('asha@raoinfra.com', 'org-1');
 
     api.verifyEmployeeEmailOTP.mockRejectedValueOnce(httpError(400, { error: 'invalid or expired code' }));
     fireEvent.changeText(screen.getByTestId('email-otp-input'), '111111');
@@ -432,9 +450,11 @@ describe('Employee flow (Aadhaar + work email)', () => {
   });
 
   it('resumes a pending code for the saved work email', async () => {
+    api.getEmployeeMethod.mockResolvedValue(otpMethod);
     renderScreen({
       role: 'CONSULTANTS',
       employmentType: 'EMPLOYEE',
+      company: 'Rao Infra',
       status: emptyStatus({
         aadhaar: approvedAadhaar,
         employeeEmail: { email: 'asha@raoinfra.com', verified: false, codePending: true },
@@ -447,6 +467,78 @@ describe('Employee flow (Aadhaar + work email)', () => {
     // Changing the address invalidates the pending code.
     fireEvent.changeText(screen.getByTestId('work-email-input'), 'asha@other.com');
     expect(screen.queryByTestId('email-otp-input')).toBeNull();
+  });
+
+  it('asks for work proof instead of a code when the owner has no whitelist', async () => {
+    api.getEmployeeMethod.mockResolvedValue(workProofMethod);
+    renderScreen({
+      role: 'CONTRACTORS',
+      employmentType: 'EMPLOYEE',
+      company: 'Rao Infra',
+      status: emptyStatus({ aadhaar: approvedAadhaar }),
+    });
+
+    expect(await screen.findByTestId('work-proof-step')).toBeTruthy();
+    expect(screen.getByTestId('work-proof-reason')).toHaveTextContent(
+      'whitelisted work email is not provided by your business owner',
+      { exact: false },
+    );
+    expect(screen.queryByTestId('send-email-code')).toBeNull();
+    expect(screen.getByText('Offer Letter')).toBeTruthy();
+    expect(screen.queryByText('Payment Slip')).toBeNull();
+    expect(screen.getByText('Office ID')).toBeTruthy();
+    expect(screen.getByTestId('work-proof-submit')).toBeDisabled();
+  });
+
+  it('asks the employee to add their company before checking the method', async () => {
+    renderScreen({
+      role: 'CONTRACTORS',
+      employmentType: 'EMPLOYEE',
+      status: emptyStatus({ aadhaar: approvedAadhaar }),
+    });
+    expect(await screen.findByTestId('work-email-company-missing')).toBeTruthy();
+    expect(api.getEmployeeMethod).not.toHaveBeenCalled();
+  });
+
+  it('shows the rejection reason so the employee can resubmit', async () => {
+    api.getEmployeeMethod.mockResolvedValue(workProofMethod);
+    renderScreen({
+      role: 'CONTRACTORS',
+      employmentType: 'EMPLOYEE',
+      company: 'Rao Infra',
+      status: emptyStatus({
+        aadhaar: approvedAadhaar,
+        employeeWorkProof: {
+          id: 9,
+          status: 'REJECTED',
+          type: 'EMPLOYEE_WORK_PROOF',
+          rejectionReason: 'Document is blurry',
+          submittedAt: '2026-11-01T00:00:00Z',
+        },
+      }),
+    });
+    expect(await screen.findByTestId('work-proof-rejected')).toHaveTextContent('Document is blurry', { exact: false });
+  });
+
+  it('completes the employee flow once the work proof is approved', async () => {
+    renderScreen({
+      role: 'CONTRACTORS',
+      employmentType: 'EMPLOYEE',
+      company: 'Rao Infra',
+      status: emptyStatus({
+        aadhaar: approvedAadhaar,
+        employeeWorkProof: {
+          id: 9,
+          status: 'APPROVED',
+          type: 'EMPLOYEE_WORK_PROOF',
+          companyLegalName: 'Rao Infra',
+          licensingAuthority: 'Office ID',
+          submittedAt: '2026-11-01T00:00:00Z',
+        },
+      }),
+    });
+    expect(await screen.findByTestId('work-proof-approved')).toBeTruthy();
+    expect(screen.getByTestId('kyc-complete')).toBeTruthy();
   });
 });
 

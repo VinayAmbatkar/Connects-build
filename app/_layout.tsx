@@ -87,6 +87,8 @@ export default function RootLayout() {
           <Stack.Screen name="listings/index" options={{ headerShown: true, title: 'My Listings' }} />
           <Stack.Screen name="portfolio/index" options={{ headerShown: true, title: 'Portfolio' }} />
           <Stack.Screen name="premium/index" options={{ headerShown: true, title: 'Plans & billing' }} />
+          <Stack.Screen name="ads/index" options={{ headerShown: true, title: 'My advertisement' }} />
+          <Stack.Screen name="ads/edit" options={{ headerShown: true, title: 'Edit advertisement' }} />
           <Stack.Screen name="billing/receipt/[id]" options={{ headerShown: true, title: 'Receipt' }} />
           <Stack.Screen name="credentials/index" options={{ headerShown: true, title: 'Licenses & certifications' }} />
           <Stack.Screen name="favourites/index" options={{ headerShown: true, title: 'Saved profiles' }} />

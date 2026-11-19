@@ -15,7 +15,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Avatar } from '@/src/components/Avatar';
 import { AppSideDrawer } from '@/src/components/AppSideDrawer';
 import { LogoMark } from '@/src/features/onboarding/LogoMark';
-import { messagesApi } from '@/src/api/messages';
 import { notificationsApi } from '@/src/api/notifications';
 import { useAuthStore } from '@/src/store/authStore';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
@@ -62,14 +61,7 @@ export function AppHeader({
     refetchInterval: 60_000,
   });
 
-  const messagesQuery = useQuery({
-    queryKey: ['messages-unread'],
-    queryFn: messagesApi.unreadCount,
-    refetchInterval: 60_000,
-  });
-
   const notifCount = Number(notificationsQuery.data?.count ?? 0);
-  const messageCount = Number(messagesQuery.data?.count ?? 0);
 
   const openSearch = () => {
     if (onSearchSubmit) {
@@ -121,16 +113,6 @@ export function AppHeader({
             >
               <Ionicons name="notifications-outline" size={22} color={colors.text} />
               <Badge count={notifCount} />
-            </Pressable>
-
-            <Pressable
-              style={styles.iconBtn}
-              onPress={() => router.push('/(tabs)/messages')}
-              hitSlop={6}
-              accessibilityLabel="Messages"
-            >
-              <Ionicons name="chatbubble-ellipses-outline" size={21} color={colors.text} />
-              <Badge count={messageCount} />
             </Pressable>
 
             <View ref={profileBtnRef} collapsable={false}>

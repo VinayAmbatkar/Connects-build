@@ -42,6 +42,8 @@ export interface Credential {
   expired: boolean;
   credentialUrl: string;
   documentUrl: string;
+  documentAvailable?: boolean;
+  documentAccessStatus?: 'PENDING' | 'APPROVED' | 'REJECTED' | '';
 }
 
 export interface CredentialRequest {
@@ -89,4 +91,16 @@ export const credentialsApi = {
   },
   removeDocument: (id: number) =>
     apiClient.delete<Credential>(`/profile/credentials/${id}/document`).then((r) => r.data),
+  requestDocumentAccess: (id: number) =>
+    apiClient
+      .post<{ status: string }>(`/profile/credentials/${id}/access-requests`)
+      .then((r) => r.data),
+  documentUrl: (id: number) =>
+    apiClient
+      .get<{ documentUrl: string }>(`/profile/credentials/${id}/document-url`)
+      .then((r) => r.data),
+  respondToDocumentAccess: (requestId: number, action: 'accept' | 'reject') =>
+    apiClient
+      .put<{ status: string }>(`/profile/credential-access-requests/${requestId}/${action}`)
+      .then((r) => r.data),
 };

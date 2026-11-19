@@ -7,6 +7,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { usePullToRefresh } from '@/src/hooks/usePullToRefresh';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -47,6 +48,7 @@ function findEventInCache(
 }
 
 export function EventDetailScreen({ eventId }: Props) {
+  const pull = usePullToRefresh();
   const queryClient = useQueryClient();
 
   const me = useAuthStore((s) => s.user);
@@ -141,6 +143,7 @@ export function EventDetailScreen({ eventId }: Props) {
       </View>
 
       <ScrollView
+        refreshControl={pull.refreshControl}
         style={styles.scroll}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}

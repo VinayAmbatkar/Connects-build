@@ -59,6 +59,26 @@ async function ensureAndroidChannels(N: typeof NotificationsModule) {
   });
 }
 
+export type PushPermissionResult =
+  | 'granted'
+  | 'denied'
+  | 'blocked'
+  | 'unavailable';
+
+export async function requestPushPermissionAsync(): Promise<PushPermissionResult> {
+  const N = Notifications;
+  if (!N) return 'unavailable';
+
+  await ensureAndroidChannels(N);
+  const current = await N.getPermissionsAsync();
+  if (current.granted) return 'granted';
+  if (!current.canAskAgain) return 'blocked';
+
+  const requested = await N.requestPermissionsAsync();
+  if (requested.granted) return 'granted';
+  return requested.canAskAgain ? 'denied' : 'blocked';
+}
+
 function easProjectId(): string | undefined {
   return (
     (Constants.expoConfig?.extra?.eas?.projectId as string | undefined) ??
@@ -73,8 +93,8 @@ let registeredToken: string | null = null;
 let inflight: Promise<string | null> | null = null;
 
 /**
- * Asks for notification permission (once), gets this device's Expo push
- * token and registers it with the backend for the logged-in user.
+ * Requests notification permission when the OS allows it, gets this device's
+ * Expo push token and registers it with the backend for the logged-in user.
  * Returns the token, or null if push isn't available (web, permission
  * denied, missing FCM config). Never throws. Concurrent calls share one
  * registration, and an unchanged token isn't re-sent.
@@ -91,16 +111,7 @@ async function register(): Promise<string | null> {
   if (!N) return null;
 
   try {
-    // Android 13+: the permission prompt only appears once a channel
-    // exists, and a channel must exist before requesting a token.
-    await ensureAndroidChannels(N);
-
-    const current = await N.getPermissionsAsync();
-    let granted = current.granted;
-    if (!granted && current.canAskAgain) {
-      granted = (await N.requestPermissionsAsync()).granted;
-    }
-    if (!granted) return null;
+    if ((await requestPushPermissionAsync()) !== 'granted') return null;
 
     const token = (
       await N.getExpoPushTokenAsync({ projectId: easProjectId() })
@@ -124,17 +135,13 @@ async function register(): Promise<string | null> {
  * session is still valid.
  */
 export async function unregisterPushAsync(): Promise<void> {
+  if (inflight) await inflight;
   // The next login (maybe another account) must register again.
   registeredToken = null;
-  try {
-    const token = await AsyncStorage.getItem(PUSH_TOKEN_KEY);
-    if (!token) return;
-    await AsyncStorage.removeItem(PUSH_TOKEN_KEY);
-    await devicesApi.unregisterPushToken(token);
-  } catch {
-    // Best-effort: if this fails, the next account to log in on this
-    // phone takes the token over anyway.
-  }
+  const token = await AsyncStorage.getItem(PUSH_TOKEN_KEY);
+  if (!token) return;
+  await devicesApi.unregisterPushToken(token);
+  await AsyncStorage.removeItem(PUSH_TOKEN_KEY);
 }
 
 type PushData = {
@@ -168,8 +175,23 @@ export function routeForNotification(data: PushData): Href {
     // The Network tab opens on "Requested", where Accept/Reject live.
     case 'CONNECTION_REQUEST':
       return '/(tabs)/network';
+    case 'CREDENTIAL_VIEW_REQUEST':
+      return data.actorId ? `/public-profile/${data.actorId}` : '/notifications';
+    // Approved / rejected (with the reason): back to Get Verified.
+    case 'VERIFICATION_APPROVED':
+    case 'VERIFICATION_REJECTED':
+      return '/verification';
+    // Opens their profile scrolled to (and blinking) the part the
+    // notification is about -- see PublicProfileScreen's `focus`.
     case 'CONNECTION_ACCEPTED':
-      return data.actorId ? `/public-profile/${data.actorId}` : '/(tabs)/network';
+      return data.actorId
+        ? (`/public-profile/${data.actorId}?focus=connection` as Href)
+        : '/(tabs)/network';
+    case 'CREDENTIAL_VIEW_APPROVED':
+    case 'CREDENTIAL_VIEW_REJECTED':
+      return data.actorId
+        ? (`/public-profile/${data.actorId}?focus=credentials` as Href)
+        : '/notifications';
     default:
       return '/notifications';
   }

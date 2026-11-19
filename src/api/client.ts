@@ -3,6 +3,11 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import Constants from 'expo-constants';
 import { getFeatureLocked, showFeatureLockedPrompt } from '@/src/features/billing/featureLocked';
 import { CLIENT_FEATURES } from '@/src/api/freemium';
+import {
+  COMPLETE_PROFILE_MESSAGE,
+  isProfileIncompleteError,
+  promptCompleteProfile,
+} from '@/src/features/profile/profileGate';
 
 const apiUrl =
   process.env.EXPO_PUBLIC_API_URL ??
@@ -227,6 +232,13 @@ apiClient.interceptors.response.use(
       showFeatureLockedPrompt(locked);
     }
 
+    // Profile gate: a professional without company / role / discipline is
+    // refused most features. Say so and offer the fix, instead of each
+    // screen showing a bare "something went wrong".
+    if (isProfileIncompleteError(error)) {
+      promptCompleteProfile();
+    }
+
     return Promise.reject(error);
   },
 );
@@ -258,6 +270,9 @@ export function getErrorMessage(error: unknown, fallback = 'Something went wrong
     }
     if (!error.response && error.message === 'Network Error') {
       return 'Cannot reach the server. Check your internet or try another network.';
+    }
+    if (isProfileIncompleteError(error)) {
+      return COMPLETE_PROFILE_MESSAGE;
     }
 
     const data = error.response?.data as

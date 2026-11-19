@@ -203,6 +203,17 @@ export function isWorkEmailVerified(status?: VerificationStatusResponse | null, 
   return record.email.trim().toLowerCase() === email.trim().toLowerCase();
 }
 
+/** An admin approved the employee's work proof (offer letter, payment slip
+ *  or office ID) -- used when the company has no whitelisted email domain. */
+export function isWorkProofApproved(status?: VerificationStatusResponse | null): boolean {
+  return status?.employeeWorkProof?.status === 'APPROVED';
+}
+
+/** The employee's second step is done: work email OTP or approved work proof. */
+export function isEmployeeCompanyVerified(status?: VerificationStatusResponse | null): boolean {
+  return isWorkEmailVerified(status) || isWorkProofApproved(status);
+}
+
 /** The Individual Consultant licence review, if one was ever submitted. */
 export function consultantReviewStatus(
   status?: VerificationStatusResponse | null,
@@ -302,7 +313,7 @@ export function getKycProgress(
     flow === 'business'
       ? isGstVerified(status)
       : flow === 'employee'
-        ? isWorkEmailVerified(status)
+        ? isEmployeeCompanyVerified(status)
         : flow === 'consultant'
           ? isConsultantApproved(status)
           : true;

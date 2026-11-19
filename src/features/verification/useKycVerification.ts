@@ -6,6 +6,7 @@ import { useAuthStore } from '@/src/store/authStore';
 import type {
   GSTVerificationResult,
   VerificationStatusResponse,
+  EmployeeWorkProofSubmission,
 } from '@/src/types/api';
 import {
   AADHAAR_DETAILS_MISMATCH,
@@ -29,6 +30,7 @@ import {
   isValidGstin,
   isValidOtp,
   isWorkEmailVerified,
+  isWorkProofApproved,
   normalizeGstin,
   parseKycError,
   resolveKycFlow,
@@ -423,7 +425,30 @@ export type GstKyc = ReturnType<typeof useGstKyc>;
 
 // ── Step 2b: work email (employees) ──────────────────────────────────────
 
-export function useWorkEmailKyc(status?: VerificationStatusResponse) {
+export const EMPLOYEE_METHOD_KEY = ['employee-verification-method'] as const;
+
+/** Whether the employee's company (from their profile) verifies by work
+ *  email OTP or by work proof upload -- decided by the backend from the
+ *  business owner's whitelisted domains. Refetched whenever the company
+ *  name changes, so editing the profile switches the step immediately. */
+export function useEmployeeMethod(companyName: string, enabled: boolean) {
+  const company = companyName.trim();
+  return useQuery({
+    queryKey: [...EMPLOYEE_METHOD_KEY, company.toLowerCase()],
+    queryFn: () => verificationApi.getEmployeeMethod(company),
+    enabled: enabled && !!company,
+    staleTime: 0,
+    retry: 1,
+  });
+}
+
+export type EmployeeMethodQuery = ReturnType<typeof useEmployeeMethod>;
+
+export function useWorkEmailKyc(
+  status?: VerificationStatusResponse,
+  organizationId = '',
+  onWorkProofRequired?: () => void,
+) {
   const { patch, refresh } = useStatusCache();
   const record = status?.employeeEmail ?? null;
 
@@ -467,16 +492,19 @@ export function useWorkEmailKyc(status?: VerificationStatusResponse) {
     setSending(true);
     setError(null);
     try {
-      await verificationApi.sendEmployeeEmailOTP(address);
+      await verificationApi.sendEmployeeEmailOTP(address, organizationId);
       setCodeSent(true);
       setCodeState('');
       refresh();
     } catch (e) {
-      setError(parseKycError(e, 'Could not send the verification code. Please try again.').message);
+      const err = parseKycError(e, 'Could not send the verification code. Please try again.');
+      // The owner removed their whitelist since the method was loaded.
+      if (err.code === 'WORK_PROOF_REQUIRED') onWorkProofRequired?.();
+      setError(err.message);
     } finally {
       setSending(false);
     }
-  }, [email, refresh]);
+  }, [email, organizationId, onWorkProofRequired, refresh]);
 
   const verifyCode = useCallback(async () => {
     const address = email.trim();
@@ -613,7 +641,7 @@ export function useConsultantKyc(status?: VerificationStatusResponse, defaultLeg
   return {
     review,
     record,
-    approved: review === 'APPROVED',
+    approved: isWorkProofApproved(status),
     legalName,
     setLegalName: (value: string) => {
       setLegalNameState(value);
@@ -639,3 +667,145 @@ export function useConsultantKyc(status?: VerificationStatusResponse, defaultLeg
 }
 
 export type ConsultantKyc = ReturnType<typeof useConsultantKyc>;
+
+// ── Step 2d: work proof (employees with non-whitelisted org) ────────────────
+export type WorkProofType = 'OFFER_LETTER' | 'OFFICE_ID';
+
+export function useWorkProofKyc(
+  status?: VerificationStatusResponse,
+  defaults: { legalName?: string; companyName?: string; companyEmail?: string } = {},
+) {
+  const { refresh, refreshProfile } = useStatusCache();
+  const review = status?.employeeWorkProof?.status ?? 'NONE';
+  const record = status?.employeeWorkProof ?? null;
+
+  const [legalName, setLegalNameState] = useState(defaults.legalName ?? '');
+  const [companyEmail, setCompanyEmailState] = useState(defaults.companyEmail ?? '');
+  const [unlistedCompanyName, setUnlistedCompanyNameState] = useState(defaults.companyName ?? '');
+
+  // Prefill once the profile / Aadhaar name arrive, without clobbering edits.
+  useEffect(() => {
+    if (defaults.legalName) setLegalNameState((cur) => cur || defaults.legalName!);
+  }, [defaults.legalName]);
+  useEffect(() => {
+    if (defaults.companyEmail) setCompanyEmailState((cur) => cur || defaults.companyEmail!);
+  }, [defaults.companyEmail]);
+  // The company always follows the profile: the proof is for that company.
+  useEffect(() => {
+    if (defaults.companyName) setUnlistedCompanyNameState(defaults.companyName);
+  }, [defaults.companyName]);
+  const [workProofType, setWorkProofTypeState] = useState<WorkProofType | ''>('');
+  const [workProofTypeError, setWorkProofTypeError] = useState<string | undefined>(undefined);
+  const [documents, setDocuments] = useState<PickedDocument[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inFlight = useRef(false);
+
+  const addDocuments = useCallback((picked: PickedDocument[]) => {
+    setError(null);
+    setWorkProofTypeError(undefined);
+    const tooLarge = picked.filter((d) => (d.size ?? 0) > MAX_DOCUMENT_BYTES);
+    const ok = picked.filter((d) => (d.size ?? 0) <= MAX_DOCUMENT_BYTES);
+    if (tooLarge.length) setError('Each document must be 10 MB or less.');
+    setDocuments((prev) => {
+      const merged = [...prev];
+      for (const doc of ok) {
+        if (!merged.some((d) => d.uri === doc.uri)) merged.push(doc);
+      }
+      if (merged.length > MAX_VERIFICATION_DOCUMENTS) {
+        setError(`You can attach up to ${MAX_VERIFICATION_DOCUMENTS} documents.`);
+      }
+      return merged.slice(0, MAX_VERIFICATION_DOCUMENTS);
+    });
+  }, []);
+
+  const removeDocument = useCallback((uri: string) => {
+    setDocuments((prev) => prev.filter((d) => d.uri !== uri));
+  }, []);
+
+  const setLegalName = useCallback((value: string) => {
+    setLegalNameState(value);
+    setError(null);
+  }, []);
+
+  const setCompanyEmail = useCallback((value: string) => {
+    setCompanyEmailState(value);
+    setError(null);
+  }, []);
+
+  const setUnlistedCompanyName = useCallback((value: string) => {
+    setUnlistedCompanyNameState(value);
+    setError(null);
+  }, []);
+
+  const setWorkProofType = useCallback((value: WorkProofType) => {
+    setWorkProofTypeState(value);
+    setWorkProofTypeError(undefined);
+    setError(null);
+  }, []);
+
+  const canSubmit =
+    !!legalName.trim() &&
+    !!companyEmail.trim() &&
+    !!unlistedCompanyName.trim() &&
+    !!workProofType &&
+    documents.length > 0 &&
+    !submitting;
+
+  const submit = useCallback(async () => {
+    if (inFlight.current) return;
+    if (!legalName.trim() || !companyEmail.trim() || !unlistedCompanyName.trim() || !workProofType) {
+      setError('Enter all required fields.');
+      return;
+    }
+    if (!documents.length) {
+      setError('Attach at least one work proof document.');
+      return;
+    }
+    inFlight.current = true;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await verificationApi.submitEmployeeWorkProof({
+        legalName: legalName.trim(),
+        companyEmail: companyEmail.trim(),
+        unlistedCompanyName: unlistedCompanyName.trim(),
+        workProofType,
+        documents: documents.map((d) => ({ uri: d.uri, name: d.name, type: d.type })),
+      });
+      setDocuments([]);
+      setWorkProofTypeState('');
+      refresh();
+      refreshProfile();
+    } catch (e) {
+      setError(parseKycError(e, "Couldn't submit your work proof. Please try again.").message);
+    } finally {
+      inFlight.current = false;
+      setSubmitting(false);
+    }
+  }, [legalName, companyEmail, unlistedCompanyName, workProofType, documents, refresh, refreshProfile]);
+
+  return {
+    review,
+    record,
+    approved: isWorkProofApproved(status),
+    legalName,
+    setLegalName,
+    companyEmail,
+    setCompanyEmail,
+    unlistedCompanyName,
+    setUnlistedCompanyName,
+    workProofType,
+    setWorkProofType,
+    workProofTypeError,
+    documents,
+    addDocuments,
+    removeDocument,
+    submitting,
+    error,
+    canSubmit,
+    submit,
+  };
+}
+
+export type WorkProofKyc = ReturnType<typeof useWorkProofKyc>;

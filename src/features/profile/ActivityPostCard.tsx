@@ -287,14 +287,7 @@ export function ActivityPostCard({
           accessibilityRole="button"
           accessibilityLabel={`Open ${displayName}'s profile${verified ? ', verified' : ''}`}
         >
-          <View>
-            <Avatar name={displayName} size={44} />
-            {verified ? (
-              <View style={styles.avatarBadge} testID="post-avatar-verified">
-                <Ionicons name="checkmark-circle" size={14} color={VERIFIED_BLUE} />
-              </View>
-            ) : null}
-          </View>
+          <Avatar name={displayName} size={44} />
           <View style={styles.headerCopy}>
             <View style={styles.nameRow}>
               <Text style={styles.name} numberOfLines={1}>
@@ -1159,14 +1152,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-  },
-  avatarBadge: {
-    position: 'absolute',
-    right: -2,
-    bottom: -2,
-    borderRadius: 9,
-    backgroundColor: colors.white,
-    padding: 1,
   },
   headerCopy: {
     flex: 1,

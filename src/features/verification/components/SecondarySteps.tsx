@@ -1,5 +1,5 @@
 import { type ComponentProps, type ReactNode, type Ref, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { colors, spacing, typography } from '@/src/theme/tokens';
@@ -16,7 +16,15 @@ import {
 } from '@/src/features/verification/components/kycUi';
 import { OtpCodeInput } from '@/src/features/verification/components/OtpCodeInput';
 import { NameMatchGuideSheet } from '@/src/features/verification/components/NameMatchGuideSheet';
-import type { ConsultantKyc, GstKyc, WorkEmailKyc } from '@/src/features/verification/useKycVerification';
+import { WorkProofStep } from '@/src/features/verification/components/WorkProofStep';
+import type {
+  ConsultantKyc,
+  EmployeeMethodQuery,
+  GstKyc,
+  WorkEmailKyc,
+  WorkProofKyc,
+} from '@/src/features/verification/useKycVerification';
+import { parseKycError } from '@/src/features/verification/kycLogic';
 import { GSTIN_LENGTH, MAX_VERIFICATION_DOCUMENTS, formatRetryAfter } from '@/src/features/verification/kycLogic';
 import type { GSTVerificationResult } from '@/src/types/api';
 
@@ -198,7 +206,22 @@ function GstVerifiedCard({ result }: { result: GSTVerificationResult }) {
 
 // ── Work email ───────────────────────────────────────────────────────────
 
-export function WorkEmailStep({ email }: { email: WorkEmailKyc }) {
+type WorkEmailStepProps = {
+  email: WorkEmailKyc;
+  workProof: WorkProofKyc;
+  /** Backend decision: work email OTP or work proof, for companyName. */
+  method: EmployeeMethodQuery;
+  /** The company on the employee's profile. */
+  companyName: string;
+  onEditProfile: () => void;
+};
+
+/**
+ * The employee's second step. The work email OTP is offered only when the
+ * company's business owner whitelisted email domains on COBILDS; any other
+ * company (no whitelist, or not registered) uploads work proof instead.
+ */
+export function WorkEmailStep({ email, workProof, method, companyName, onEditProfile }: WorkEmailStepProps) {
   if (email.verified) {
     return (
       <KycCard
@@ -212,6 +235,58 @@ export function WorkEmailStep({ email }: { email: WorkEmailKyc }) {
     );
   }
 
+  // A submitted or approved work proof stays visible whatever the method.
+  if (workProof.review === 'APPROVED' || workProof.review === 'PENDING') {
+    return <WorkProofStep workProof={workProof} companyName={companyName} />;
+  }
+
+  if (!companyName.trim()) {
+    return (
+      <KycCard
+        testID="work-email-company-missing"
+        icon="business-outline"
+        title="Add your company"
+        subtitle="Add the company you work for on your profile, then come back to verify you work there."
+      >
+        <KycButton title="Edit profile" icon="create-outline" onPress={onEditProfile} />
+      </KycCard>
+    );
+  }
+
+  if (method.isLoading) {
+    return (
+      <KycCard testID="work-email-checking" icon="mail-outline" title="Verify your company" subtitle={`Checking ${companyName}…`}>
+        <ActivityIndicator color={kyc.navy} />
+      </KycCard>
+    );
+  }
+
+  if (method.isError || !method.data) {
+    return (
+      <KycCard testID="work-email-method-error" icon="mail-outline" title="Verify your company">
+        <View style={fieldStyles.gap}>
+          <Banner
+            tone="error"
+            message={parseKycError(method.error, "Couldn't check your company. Please try again.").message}
+          />
+          <KycButton variant="secondary" title="Try again" icon="refresh" onPress={() => void method.refetch()} />
+        </View>
+      </KycCard>
+    );
+  }
+
+  if (method.data.method === 'WORK_PROOF') {
+    return (
+      <WorkProofStep
+        workProof={workProof}
+        message={method.data.message}
+        companyName={companyName}
+        onEditProfile={onEditProfile}
+      />
+    );
+  }
+
+  const domains = method.data.emailDomains ?? [];
   return (
     <KycCard
       testID="work-email-step"
@@ -225,12 +300,17 @@ export function WorkEmailStep({ email }: { email: WorkEmailKyc }) {
           label="Company work email"
           value={email.email}
           onChangeText={email.setEmail}
-          placeholder="you@yourcompany.com"
+          placeholder={domains[0] ? `you@${domains[0]}` : 'you@yourcompany.com'}
           keyboardType="email-address"
           autoCapitalize="none"
           autoCorrect={false}
           autoComplete="email"
           textContentType="emailAddress"
+          hint={
+            domains.length
+              ? `${method.data.organizationName ?? companyName} accepts ${domains.map((d) => `@${d}`).join(', ')} addresses.`
+              : undefined
+          }
         />
 
         <KycButton

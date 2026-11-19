@@ -1,6 +1,7 @@
 import { alertApiError } from '@/src/features/billing/featureLocked';
 import { useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
+import { usePullToRefresh } from '@/src/hooks/usePullToRefresh';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/src/components/Button';
 import { EmptyState } from '@/src/components/EmptyState';
@@ -12,6 +13,7 @@ import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 import { appAlert } from '@/src/components/AppDialog';
 import { ListSkeleton } from '@/src/components/Skeleton';
 export default function ListingsScreen() {
+  const pull = usePullToRefresh();
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('');
   const [description, setDescription] = useState('');
@@ -70,6 +72,7 @@ export default function ListingsScreen() {
         />
       </View>
       <FlatList
+        refreshControl={pull.refreshControl}
         data={data}
         keyExtractor={(item, index) => String(item.id ?? index)}
         contentContainerStyle={data.length === 0 ? styles.empty : styles.list}

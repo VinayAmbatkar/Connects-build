@@ -9,6 +9,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { usePullToRefresh } from '@/src/hooks/usePullToRefresh';
+import { VerifiedName } from '@/src/components/VerifiedName';
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
@@ -54,6 +56,7 @@ function personHeadline(
 }
 
 export function SearchScreen({ initialQuery = '', showBack = true }: Props) {
+  const pull = usePullToRefresh();
   const inputRef = useRef<TextInput>(null);
   const [query, setQuery] = useState(initialQuery);
   const [submitted, setSubmitted] = useState(initialQuery.trim());
@@ -167,6 +170,7 @@ export function SearchScreen({ initialQuery = '', showBack = true }: Props) {
 
       {showingIdle ? (
         <ScrollView
+          refreshControl={pull.refreshControl}
           style={styles.body}
           contentContainerStyle={styles.bodyContent}
           keyboardShouldPersistTaps="handled"
@@ -274,6 +278,7 @@ export function SearchScreen({ initialQuery = '', showBack = true }: Props) {
             </View>
           ) : (
             <FlatList
+              refreshControl={pull.refreshControl}
               data={suggestionsQuery.data ?? []}
               keyExtractor={(item, index) => `${personId(item)}-${index}`}
               keyboardShouldPersistTaps="handled"
@@ -301,9 +306,11 @@ export function SearchScreen({ initialQuery = '', showBack = true }: Props) {
                   <Pressable style={styles.row} onPress={() => void openPerson(item)}>
                     <Avatar name={personName(item)} size={44} />
                     <View style={styles.rowCopy}>
-                      <Text style={styles.rowTitle} numberOfLines={1}>
-                        {personName(item)}
-                      </Text>
+                      <VerifiedName
+                        name={personName(item)}
+                        verified={item.verified}
+                        style={styles.rowTitle}
+                      />
                       <Text style={styles.rowMeta} numberOfLines={1}>
                         {personHeadline(item, roleLabel)}
                       </Text>
@@ -325,6 +332,7 @@ export function SearchScreen({ initialQuery = '', showBack = true }: Props) {
             </View>
           ) : (
             <FlatList
+              refreshControl={pull.refreshControl}
               data={resultsQuery.data ?? []}
               keyExtractor={(item, index) => `${personId(item)}-${index}`}
               keyboardShouldPersistTaps="handled"
@@ -351,9 +359,11 @@ export function SearchScreen({ initialQuery = '', showBack = true }: Props) {
                   <Pressable style={styles.resultCard} onPress={() => void openPerson(item)}>
                     <Avatar name={personName(item)} size={52} />
                     <View style={styles.rowCopy}>
-                      <Text style={styles.rowTitle} numberOfLines={1}>
-                        {personName(item)}
-                      </Text>
+                      <VerifiedName
+                        name={personName(item)}
+                        verified={item.verified}
+                        style={styles.rowTitle}
+                      />
                       <Text style={styles.rowMeta} numberOfLines={2}>
                         {personHeadline(item, roleLabel)}
                       </Text>
