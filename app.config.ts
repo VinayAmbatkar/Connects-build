@@ -45,9 +45,13 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       backgroundImage: './assets/images/android-icon-background.png',
       monochromeImage: './assets/images/android-icon-monochrome.png',
     },
-    permissions: [
-      'android.permission.CAMERA',
+    permissions: ['android.permission.CAMERA'],
+    // Play's photo/video permission policy rejects broad media access for
+    // occasional picks; expo-image-picker uses the system Photo Picker.
+    blockedPermissions: [
       'android.permission.READ_MEDIA_IMAGES',
+      'android.permission.READ_MEDIA_VIDEO',
+      'android.permission.RECORD_AUDIO',
     ],
   },
   web: {
@@ -94,6 +98,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
           'Allow COBILDS to access your photos for portfolio and messaging.',
         cameraPermission:
           'Allow COBILDS to use your camera for uploads.',
+        microphonePermission: false,
       },
     ],
     [
