@@ -24,14 +24,14 @@ export default function OnboardingScreen() {
     void prefetchOnboardingImages();
   }, []);
 
-  const goLogin = async () => {
+  const goSignup = async () => {
     await completeOnboarding();
-    router.replace('/(auth)/login');
+    router.replace('/(auth)/signup');
   };
 
   const goNext = async () => {
     if (step >= TOTAL_STEPS - 1) {
-      await goLogin();
+      await goSignup();
       return;
     }
     next();
@@ -69,7 +69,7 @@ export default function OnboardingScreen() {
                     height={pageHeight}
                     slideCount={TOTAL_STEPS}
                     onNext={goNext}
-                    onSkip={goLogin}
+                    onSkip={goSignup}
                   />
                 </View>
 
@@ -80,7 +80,7 @@ export default function OnboardingScreen() {
                     height={pageHeight}
                     slideCount={TOTAL_STEPS}
                     onNext={goNext}
-                    onSkip={goLogin}
+                    onSkip={goSignup}
                   />
                 </View>
               </Animated.View>

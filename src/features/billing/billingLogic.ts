@@ -47,6 +47,14 @@ export function includedFeatures(features: FeatureAccess[]): string[] {
     .map((f) => (f.kind === 'LIMIT' ? `${f.label} (up to ${f.limit})` : f.label));
 }
 
+/** Features this tier doesn't include -- the complement of includedFeatures,
+ *  shown locked so people can see what an upgrade unlocks. */
+export function lockedFeatures(features: FeatureAccess[]): string[] {
+  return features
+    .filter((f) => !(f.enabled && (f.kind === 'BOOL' || f.limit > 0)))
+    .map((f) => f.label);
+}
+
 const PAYMENT_STATUS_LABEL: Record<string, string> = {
   CREATED: 'Not completed',
   PAID: 'Paid',

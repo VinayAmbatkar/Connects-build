@@ -6,7 +6,6 @@ import { CLIENT_FEATURES } from '@/src/api/freemium';
 import {
   COMPLETE_PROFILE_MESSAGE,
   isProfileIncompleteError,
-  promptCompleteProfile,
 } from '@/src/features/profile/profileGate';
 
 const apiUrl =
@@ -232,12 +231,10 @@ apiClient.interceptors.response.use(
       showFeatureLockedPrompt(locked);
     }
 
-    // Profile gate: a professional without company / role / discipline is
-    // refused most features. Say so and offer the fix, instead of each
-    // screen showing a bare "something went wrong".
-    if (isProfileIncompleteError(error)) {
-      promptCompleteProfile();
-    }
+    // Profile gate: no popup from here -- background requests (push token,
+    // unread counts, ...) fail too, which popped the dialog on any screen.
+    // The tabs layout prompts only when a professional opens Home,
+    // Discover or Profile; getErrorMessage explains it everywhere else.
 
     return Promise.reject(error);
   },

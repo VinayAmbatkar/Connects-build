@@ -18,5 +18,6 @@ export default function Index() {
     return <Redirect href="/(onboarding)" />;
   }
 
-  return <Redirect href="/(auth)/login" />;
+  // New users sign up first; signup links to login for existing accounts.
+  return <Redirect href="/(auth)/signup" />;
 }

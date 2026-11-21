@@ -22,7 +22,8 @@ import { SignupAccountFooter } from '@/src/components/SignupAccountFooter';
 import { BrandTaglineFooter } from '@/src/components/BrandTaglineFooter';
 import { StepProgress } from '@/src/components/StepProgress';
 import { BrandHeader } from '@/src/features/onboarding/BrandHeader';
-import { useSignupStore } from '@/src/store/signupStore';
+import { takePendingSignupSession, useSignupStore } from '@/src/store/signupStore';
+import { useAuthActions } from '@/src/hooks/useAuthActions';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
 import { appAlert } from '@/src/components/AppDialog';
@@ -38,6 +39,7 @@ export default function SignupOtpScreen() {
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
   const insets = useSafeAreaInsets();
+  const { persistSession } = useAuthActions();
 
   const resendOtp = async () => {
     if (!draft.email.trim()) {
@@ -64,6 +66,9 @@ export default function SignupOtpScreen() {
     try {
       await authApi.verifyEmailOtp(draft.email.trim(), code);
       update({ emailVerified: true });
+      // Log in only now that the email is verified.
+      const session = takePendingSignupSession();
+      if (session) await persistSession(session);
       const isConsumer = draft.role.trim().toUpperCase() === 'CONSUMER';
       reset();
       router.replace(

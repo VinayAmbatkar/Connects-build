@@ -27,7 +27,13 @@ type Props = {
   /** Keep a constant height instead of sizing to content, so the sheet
    *  doesn't grow while its content loads (e.g. a comment thread). */
   fixedHeight?: boolean;
+  /** Show a slim frosted-glass scrollbar on the right while the content
+   *  is taller than the sheet, so people can tell it scrolls. */
+  scrollIndicator?: boolean;
 };
+
+const TRACK_INSET = 6;
+const MIN_THUMB = 36;
 
 const SHEET_TRAVEL = Dimensions.get('window').height;
 const OPEN_MS = 280;
@@ -42,8 +48,25 @@ export function BottomSheet({
   footer,
   tall = false,
   fixedHeight = false,
+  scrollIndicator = false,
 }: Props) {
   const insets = useSafeAreaInsets();
+  // Glass scrollbar: thumb size = visible share of the content; position
+  // follows the scroll offset.
+  const [viewportHeight, setViewportHeight] = useState(0);
+  const [contentHeight, setContentHeight] = useState(0);
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const canScroll = scrollIndicator && viewportHeight > 0 && contentHeight > viewportHeight + 1;
+  const trackHeight = Math.max(0, viewportHeight - TRACK_INSET * 2);
+  const thumbHeight = canScroll
+    ? Math.max(MIN_THUMB, (viewportHeight / contentHeight) * trackHeight)
+    : 0;
+  const maxScroll = Math.max(1, contentHeight - viewportHeight);
+  const thumbTranslate = scrollY.interpolate({
+    inputRange: [0, maxScroll],
+    outputRange: [0, Math.max(0, trackHeight - thumbHeight)],
+    extrapolate: 'clamp',
+  });
   const [mounted, setMounted] = useState(visible);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [overlayHeight, setOverlayHeight] = useState(0);
@@ -230,18 +253,41 @@ export function BottomSheet({
               <Ionicons name="close" size={22} color={colors.textSecondary} />
             </Pressable>
           </View>
-          <KeyboardAwareScrollView
-            // The sheet itself lifts above the keyboard; this only scrolls
-            // the focused field into the visible part of the sheet.
-            padForKeyboard={false}
-            style={[styles.body, tall && styles.bodyTall]}
-            contentContainerStyle={styles.bodyContent}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-            keyboardDismissMode="interactive"
-          >
-            {children}
-          </KeyboardAwareScrollView>
+          <View style={fixedHeight ? styles.bodyWrapFill : styles.bodyWrap}>
+            <KeyboardAwareScrollView
+              // The sheet itself lifts above the keyboard; this only scrolls
+              // the focused field into the visible part of the sheet.
+              padForKeyboard={false}
+              style={[styles.body, fixedHeight && styles.bodyFill, tall && styles.bodyTall]}
+              contentContainerStyle={styles.bodyContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              keyboardDismissMode="interactive"
+              scrollEventThrottle={16}
+              onLayout={scrollIndicator ? (e) => setViewportHeight(e.nativeEvent.layout.height) : undefined}
+              onContentSizeChange={scrollIndicator ? (_w, h) => setContentHeight(h) : undefined}
+              onScroll={
+                scrollIndicator
+                  ? (e) => scrollY.setValue(e.nativeEvent.contentOffset.y)
+                  : undefined
+              }
+            >
+              {children}
+            </KeyboardAwareScrollView>
+            {canScroll ? (
+              <View pointerEvents="none" style={[styles.glassTrack, { height: trackHeight }]}>
+                <Animated.View
+                  testID="bottom-sheet-scroll-thumb"
+                  style={[
+                    styles.glassThumb,
+                    { height: thumbHeight, transform: [{ translateY: thumbTranslate }] },
+                  ]}
+                >
+                  <View style={styles.glassShine} />
+                </Animated.View>
+              </View>
+            ) : null}
+          </View>
           {footer ? <View style={styles.footer}>{footer}</View> : null}
           </Animated.View>
         </Animated.View>
@@ -316,7 +362,52 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // The scroll area sits in this wrapper (so the glass scrollbar can
+  // overlay it) and keeps the old sizing: shrink to fit, or fill a
+  // fixed-height sheet.
+  bodyWrap: {
+    flexShrink: 1,
+  },
+  bodyWrapFill: {
+    flex: 1,
+  },
   body: {
+    flexShrink: 1,
+  },
+  bodyFill: {
+    flex: 1,
+  },
+  // Frosted-glass scrollbar: a faint track with a translucent, softly
+  // bordered thumb and a highlight down its left edge.
+  glassTrack: {
+    position: 'absolute',
+    right: 4,
+    top: TRACK_INSET,
+    width: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(148, 163, 184, 0.14)',
+  },
+  glassThumb: {
+    width: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(148, 163, 184, 0.45)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 255, 255, 0.85)',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.18,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+    overflow: 'hidden',
+  },
+  glassShine: {
+    position: 'absolute',
+    left: 1,
+    top: 2,
+    bottom: 2,
+    width: 1.5,
+    borderRadius: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.75)',
   },
   bodyTall: {
   },

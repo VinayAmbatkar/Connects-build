@@ -20,6 +20,7 @@ import { StepProgress } from '@/src/components/StepProgress';
 import { TextField } from '@/src/components/TextField';
 import { BrandHeader } from '@/src/features/onboarding/BrandHeader';
 import { BrandTaglineFooter } from '@/src/components/BrandTaglineFooter';
+import { SignupAccountFooter } from '@/src/components/SignupAccountFooter';
 import {
   digitsOnly,
   getPhoneCountryById,
@@ -199,6 +200,8 @@ export default function SignupProfileScreen() {
                 <Ionicons name="arrow-forward" size={18} color={colors.white} />
               </View>
             </Pressable>
+
+            <SignupAccountFooter />
 
             <View style={styles.bottomGroup}>
               <BrandTaglineFooter />

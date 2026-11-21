@@ -13,7 +13,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // match @cobilds/connexbuild (its dashboard display name is COBILDS).
   slug: 'connexbuild',
   owner: 'cobilds',
-  version: '1.0.0',
+  version: '1.0.1',
   orientation: 'portrait',
   icon: './assets/images/icon.png',
   scheme: 'connexbuild',
@@ -60,6 +60,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     favicon: './assets/images/favicon.png',
   },
   plugins: [
+    // Keep portrait lock from becoming a required hardware feature on Play.
+    './plugins/withOptionalScreenFeatures',
     'expo-router',
     'expo-secure-store',
     'expo-font',

@@ -99,7 +99,7 @@ export default function LoginScreen() {
 
             <View style={styles.heroContent}>
               <BrandHeader showMadeInBharath />
-              <Text style={styles.welcome}>Welcome back! 👋</Text>
+              <Text style={styles.welcome}>Welcome back!</Text>
               <Text style={styles.welcomeSub}>
                 Sign in to continue building great connections.
               </Text>

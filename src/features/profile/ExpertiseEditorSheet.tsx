@@ -137,7 +137,7 @@ export function ExpertiseEditorSheet({
   }, [activeDiscipline, apiSpecializations]);
 
   const selectedRoleLabel =
-    resolveOptionLabel(roleOptions, form.role) ?? form.role ?? 'your role';
+    resolveOptionLabel(roleOptions, form.role) || form.role || 'your role';
 
   const focusDiscipline = (disciplineId: string) => {
     setActiveDisciplineId(disciplineId);
@@ -221,6 +221,7 @@ export function ExpertiseEditorSheet({
       subtitle={`Options for ${selectedRoleLabel}`}
       onClose={onClose}
       tall
+      scrollIndicator
       footer={
         <Pressable style={styles.doneBtn} onPress={onClose}>
           <Text style={styles.doneText}>Done</Text>

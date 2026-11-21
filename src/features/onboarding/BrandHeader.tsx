@@ -8,7 +8,7 @@ type Props = {
   accentName?: boolean;
   /** Kept for call-site compatibility; brand mark is always COBILDS. */
   splitName?: boolean;
-  /** Show "MADE IN BHARATH" under the logo (login/signup). */
+  /** Show "MADE IN BHARAT" under the logo (login/signup). */
   showMadeInBharath?: boolean;
 };
 
@@ -22,7 +22,7 @@ export function BrandHeader({ onPress, showMadeInBharath }: Props) {
         </Text>
       </View>
       {showMadeInBharath ? (
-        <Text style={styles.madeIn}>MADE IN BHARATH</Text>
+        <Text style={styles.madeIn}>MADE IN BHARAT</Text>
       ) : null}
     </View>
   );

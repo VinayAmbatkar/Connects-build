@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
   Pressable,
@@ -14,7 +14,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { DEFAULT_ROLES, type AppRole } from '@/src/constants/app';
 import { HOME_ROLE_TO_CATEGORY_ROLE } from '@/src/constants/category';
 import { useSearchFlowStore } from '@/src/features/search/searchFlowStore';
+import { isConsumerRole } from '@/src/features/profile/profileLocks';
+import { DemoTourOverlay } from '@/src/features/tour/DemoTourOverlay';
+import { CONSUMER_TOUR_STEPS, type TourRect } from '@/src/features/tour/tourSteps';
+import { useAppTour } from '@/src/features/tour/useAppTour';
+import { useAuthStore } from '@/src/store/authStore';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
+
+type TourKey = 'roles' | 'steps' | 'search';
 
 type RoleCard = AppRole & {
   tags: string[];
@@ -98,6 +105,31 @@ export function ConnectRolePickerScreen() {
     return match ?? 'Vendor';
   });
 
+  // Consumers land here after signup: their own first-run tour.
+  const role = useAuthStore((s) => s.user?.role);
+  const tour = useAppTour(isConsumerRole(role), CONSUMER_TOUR_STEPS.length);
+  const tourRefs = {
+    roles: useRef<View>(null),
+    steps: useRef<View>(null),
+    search: useRef<View>(null),
+  };
+  const [tourRects, setTourRects] = useState<Partial<Record<TourKey, TourRect>>>({});
+  const measureTourTargets = useCallback(() => {
+    (Object.keys(tourRefs) as TourKey[]).forEach((key) => {
+      tourRefs[key].current?.measureInWindow((x, y, width, height) => {
+        setTourRects((prev) => ({ ...prev, [key]: { x, y, width, height } }));
+      });
+    });
+    // Refs are stable; re-measure only when asked.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (!tour.visible) return;
+    // After layout settles (header, safe area).
+    const t = setTimeout(measureTourTargets, 250);
+    return () => clearTimeout(t);
+  }, [tour.visible, tour.step, measureTourTargets]);
+
   const roles: RoleCard[] = useMemo(() => {
     return ROLE_ORDER.map((value) => {
       const base = DEFAULT_ROLES.find((r) => r.value === value)!;
@@ -164,14 +196,16 @@ export function ConnectRolePickerScreen() {
               <Text style={styles.title}>
                 Find <Text style={styles.titleAccent}>Connections</Text>
               </Text>
-              <Pressable
-                onPress={openSearch}
-                style={styles.searchIconBtn}
-                hitSlop={8}
-                accessibilityLabel="Search roles"
-              >
-                <Ionicons name="search" size={20} color={colors.text} />
-              </Pressable>
+              <View ref={tourRefs.search} collapsable={false}>
+                <Pressable
+                  onPress={openSearch}
+                  style={styles.searchIconBtn}
+                  hitSlop={8}
+                  accessibilityLabel="Search roles"
+                >
+                  <Ionicons name="search" size={20} color={colors.text} />
+                </Pressable>
+              </View>
             </>
           )}
         </View>
@@ -180,7 +214,7 @@ export function ConnectRolePickerScreen() {
           Choose who you want to connect with in the construction industry.
         </Text>
 
-        <View style={styles.stepper}>
+        <View ref={tourRefs.steps} collapsable={false} style={styles.stepper}>
           {STEPPER.map((step, index) => {
             const active = step.id === 1;
             return (
@@ -210,7 +244,7 @@ export function ConnectRolePickerScreen() {
 
         <Text style={styles.stepOf}>STEP 1 OF 4 · TAP A ROLE TO CONTINUE</Text>
 
-        <View style={styles.grid}>
+        <View ref={tourRefs.roles} collapsable={false} style={styles.grid}>
           {filtered.map((role) => {
             const isSelected = selected === role.value;
             return (
@@ -264,6 +298,15 @@ export function ConnectRolePickerScreen() {
         </View>
       </ScrollView>
 
+      <DemoTourOverlay
+        steps={CONSUMER_TOUR_STEPS}
+        rects={tourRects}
+        visible={tour.visible}
+        stepIndex={tour.step}
+        onNext={tour.next}
+        onBack={tour.back}
+        onSkip={() => void tour.skip()}
+      />
     </SafeAreaView>
   );
 }

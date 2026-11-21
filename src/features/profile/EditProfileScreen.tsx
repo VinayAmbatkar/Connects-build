@@ -33,11 +33,8 @@ import {
   computeStepLocks,
   isConsumerRole,
 } from '@/src/features/profile/profileLocks';
-import {
-  COMPLETE_PROFILE_MESSAGE,
-  COMPLETE_PROFILE_TITLE,
-  setEditProfileOpen,
-} from '@/src/features/profile/profileGate';
+import { setEditProfileOpen } from '@/src/features/profile/profileGate';
+import { INVALID_PHONE_MESSAGE, isValidPhoneNumber } from '@/src/utils/phone';
 import { useKycProgress } from '@/src/features/verification/useKycVerification';
 import {
   buildCategorySelections,
@@ -390,16 +387,11 @@ export function EditProfileScreen() {
     return () => setEditProfileOpen(false);
   }, []);
 
-  // A professional who still owes company / role / discipline gets here
-  // from the profile gate: say why once, instead of a silent redirect.
+  // A professional who still owes company / role / discipline. No popup
+  // here: people arrive from that very popup (Home / Discover / Profile
+  // tabs) or from signup.
   const gatedProfile =
     !!saved && saved.profileComplete === false && !isConsumerRole(saved.role);
-  const explainedGate = useRef(false);
-  useEffect(() => {
-    if (!gatedProfile || explainedGate.current) return;
-    explainedGate.current = true;
-    appAlert(COMPLETE_PROFILE_TITLE, COMPLETE_PROFILE_MESSAGE);
-  }, [gatedProfile]);
   const { progress: kycProgress, isLoading: kycLoading } = useKycProgress(
     resolveKycFlow(saved?.role, saved?.employmentType),
     saved?.verified,
@@ -492,7 +484,9 @@ export function EditProfileScreen() {
   const validateProfessional = (): FormErrors => {
     const next: FormErrors = {};
     if (!form.fullName?.trim()) next.fullName = 'Please add your full name.';
-    if (!form.phoneNumber?.trim()) next.phoneNumber = 'Phone number is required.';
+    const phone = form.phoneNumber?.trim() ?? '';
+    if (!phone) next.phoneNumber = 'Phone number is required.';
+    else if (!isValidPhoneNumber(phone, form.phoneCountryCode)) next.phoneNumber = INVALID_PHONE_MESSAGE;
     const website = form.website?.trim();
     if (website && !WEBSITE_PATTERN.test(website.toLowerCase())) {
       next.website = 'Please enter a valid website URL (e.g. https://yourcompany.com)';
@@ -668,26 +662,28 @@ export function EditProfileScreen() {
         hint="This can't be changed here. Contact support if you need to update it."
       />
 
-      {/* The backend keeps the phone fixed once a profile is saved, so it
-          is only editable on the very first save. */}
-      {saved?.phoneNumber ? (
-        <ReadOnlyField
-          label="Phone number"
-          required
-          value={[form.phoneCountryCode, form.phoneNumber].filter(Boolean).join(' ')}
-        />
-      ) : (
-        <TextField
-          label="Phone number"
-          required
-          keyboardType="phone-pad"
-          maxLength={11}
-          placeholder="00000 00000"
-          value={String(form.phoneNumber ?? '')}
-          onChangeText={(v) => set('phoneNumber', v.replace(/[^0-9]/g, '').slice(0, 11))}
-          error={errors.phoneNumber}
-        />
-      )}
+      <TextField
+        label="Phone number"
+        required
+        keyboardType="phone-pad"
+        maxLength={15}
+        placeholder="98765 43210"
+        value={String(form.phoneNumber ?? '')}
+        onChangeText={(v) => set('phoneNumber', v.replace(/[^0-9]/g, '').slice(0, 15))}
+        // Say so as soon as they leave the field, not only on Save.
+        onBlur={() => {
+          const phone = String(form.phoneNumber ?? '').trim();
+          setErrors((prev) => ({
+            ...prev,
+            phoneNumber: !phone
+              ? 'Phone number is required.'
+              : isValidPhoneNumber(phone, form.phoneCountryCode)
+                ? undefined
+                : INVALID_PHONE_MESSAGE,
+          }));
+        }}
+        error={errors.phoneNumber}
+      />
 
       {!isConsumer ? (
         <>
@@ -703,7 +699,7 @@ export function EditProfileScreen() {
             }}
           />
           <TextField
-            label="Bio"
+            label="About"
             multiline
             placeholder="Tell others about your experience and what you're working on..."
             style={styles.multiline}
@@ -1185,7 +1181,6 @@ export function EditProfileScreen() {
                 <Ionicons name="sparkles-outline" size={20} color={colors.primary} />
               </View>
               <View style={styles.flex}>
-                <Text style={styles.onboardingTitle}>Make your profile stand out</Text>
                 <Text style={styles.onboardingText}>
                   Add your experience, expertise, and projects so clients can discover you and feel confident connecting.
                 </Text>

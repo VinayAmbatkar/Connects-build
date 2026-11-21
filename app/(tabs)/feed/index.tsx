@@ -14,6 +14,8 @@ import {
   ONBOARDING_EDIT_PROFILE,
   isProfileIncompleteError,
 } from '@/src/features/profile/profileGate';
+import { isConsumerRole } from '@/src/features/profile/profileLocks';
+import { useAppTour } from '@/src/features/tour/useAppTour';
 import { router, useLocalSearchParams, type Href } from 'expo-router';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,7 +28,6 @@ import { getErrorMessage } from '@/src/api/client';
 import { feedKeys, flattenUnique, nextOffset, upsertEventAtTop } from '@/src/features/events/feedCache';
 import { useSSE } from '@/src/hooks/useSSE';
 import { useAuthStore } from '@/src/store/authStore';
-import { usePrefsStore } from '@/src/store/prefsStore';
 import { colors, spacing, typography } from '@/src/theme/tokens';
 import type { EventItem } from '@/src/types/api';
 import { adAfter, adsApi, trackAd, type AdCard } from '@/src/api/ads';
@@ -73,18 +74,12 @@ function FeedTabs({ active, onChange }: { active: FeedTab; onChange: (tab: FeedT
 
 export default function FeedScreen() {
   const params = useLocalSearchParams<{ tour?: string }>();
-  const hasCompletedTour = usePrefsStore((s) => s.hasCompletedTour);
-  const completeTour = usePrefsStore((s) => s.completeTour);
-  const [tourVisible, setTourVisible] = useState(false);
-  const [tourStep, setTourStep] = useState(0);
   const [activeTab, setActiveTab] = useState<FeedTab>('forYou');
   const myId = useAuthStore((s) => s.user?.id);
-
-  useEffect(() => {
-    if (params.tour === '1' && !hasCompletedTour) {
-      setTourVisible(true);
-    }
-  }, [params.tour, hasCompletedTour]);
+  const role = useAuthStore((s) => s.user?.role);
+  // Professionals' tour lives here; consumers get theirs on Find
+  // Connections (ConnectRolePickerScreen).
+  const tour = useAppTour(params.tour === '1' && !isConsumerRole(role), TOUR_STEPS.length);
 
   // One server-paged list per tab. The Network tab used to page through
   // the whole global feed and filter on the phone until it found 6 posts
@@ -153,19 +148,6 @@ export default function FeedScreen() {
       }
     },
   });
-
-  const finishTour = async () => {
-    setTourVisible(false);
-    await completeTour();
-  };
-
-  const nextTour = async () => {
-    if (tourStep >= TOUR_STEPS.length - 1) {
-      await finishTour();
-      return;
-    }
-    setTourStep((s) => s + 1);
-  };
 
   const isNetwork = activeTab === 'network';
   // Full-screen states only for the first tab's first load; the Network
@@ -258,10 +240,12 @@ export default function FeedScreen() {
       </Pressable>
 
       <DemoTourOverlay
-        visible={tourVisible}
-        stepIndex={tourStep}
-        onNext={nextTour}
-        onSkip={finishTour}
+        steps={TOUR_STEPS}
+        visible={tour.visible}
+        stepIndex={tour.step}
+        onNext={tour.next}
+        onBack={tour.back}
+        onSkip={() => void tour.skip()}
       />
     </View>
   );

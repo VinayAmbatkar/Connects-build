@@ -24,6 +24,9 @@ export const authApi = {
   sendEmailOtp: (email: string) =>
     apiClient.post('/auth/send-email-otp', { email }).then((r) => r.data),
 
+  /** Marks the first-run app tour as done for this account (all devices). */
+  markTourSeen: () => apiClient.post('/auth/tour-seen').then((r) => r.data),
+
   verifyEmailOtp: (email: string, code: string) =>
     apiClient
       .post('/auth/verify-email-otp', { email, code })

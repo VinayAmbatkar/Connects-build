@@ -1,13 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
   Image,
-  Keyboard,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -15,6 +11,7 @@ import {
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { KeyboardAwareScrollView } from '@/src/components/KeyboardAwareScrollView';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SignupAccountFooter } from '@/src/components/SignupAccountFooter';
 import { BrandTaglineFooter } from '@/src/components/BrandTaglineFooter';
@@ -23,8 +20,7 @@ import { TextField } from '@/src/components/TextField';
 import { BrandHeader } from '@/src/features/onboarding/BrandHeader';
 import { authApi } from '@/src/api/auth';
 import { getErrorMessage } from '@/src/api/client';
-import { useAuthActions } from '@/src/hooks/useAuthActions';
-import { useSignupStore } from '@/src/store/signupStore';
+import { setPendingSignupSession, toApiSignupRole, useSignupStore } from '@/src/store/signupStore';
 import { colors, radius, spacing, typography } from '@/src/theme/tokens';
 
 import { appAlert } from '@/src/components/AppDialog';
@@ -50,39 +46,11 @@ function Rule({ ok, label }: { ok: boolean; label: string }) {
 export default function SignupPasswordScreen() {
   const draft = useSignupStore((s) => s.draft);
   const update = useSignupStore((s) => s.update);
-  const { persistSession } = useAuthActions();
   const [confirm, setConfirm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const scrollRef = useRef<ScrollView>(null);
   const insets = useSafeAreaInsets();
-
-  useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-
-    const showSub = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
-    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
-
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
-
-  const scrollToField = (offset = 0) => {
-    setTimeout(() => {
-      scrollRef.current?.scrollTo({ y: offset, animated: true });
-    }, 120);
-  };
-
-  const scrollToConfirm = () => {
-    setTimeout(() => {
-      scrollRef.current?.scrollToEnd({ animated: true });
-    }, 150);
-  };
 
   const checks = useMemo(
     () => ({
@@ -125,9 +93,11 @@ export default function SignupPasswordScreen() {
         phoneCountryCode: draft.phoneCountryCode.trim(),
         phoneNumber: draft.phoneNumber.trim(),
         password: draft.password,
-        role: draft.role,
+        role: toApiSignupRole(draft.role),
       });
-      await persistSession(data);
+      // Don't log in yet: a session here makes the app treat the user as
+      // registered and jump to Edit Profile before the email is verified.
+      setPendingSignupSession(data);
       router.push('/(auth)/signup/otp');
     } catch (error) {
       appAlert('Signup failed', getErrorMessage(error));
@@ -153,25 +123,17 @@ export default function SignupPasswordScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        // Android runs edge-to-edge, so the window no longer resizes for the
-        // keyboard -- pad on both platforms (same as ChatScreen).
-        behavior="padding"
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
-      >
-        <ScrollView
-          ref={scrollRef}
+      {/* Edge-to-edge Android doesn't resize the window for the keyboard;
+          KeyboardAwareScrollView scrolls just enough to keep the focused
+          field visible instead of padding + jumping the whole page. */}
+      <View style={styles.flex}>
+        <KeyboardAwareScrollView
           contentContainerStyle={[
             styles.content,
-            {
-              paddingBottom:
-                Math.max(insets.bottom, 16) + (keyboardVisible ? 220 : 24),
-            },
+            { paddingBottom: Math.max(insets.bottom, 16) + 24 },
           ]}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
-          automaticallyAdjustKeyboardInsets
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.hero}>
@@ -226,7 +188,6 @@ export default function SignupPasswordScreen() {
               secureTextEntry={!showPassword}
               value={draft.password}
               onChangeText={(password) => update({ password })}
-              onFocus={() => scrollToField(180)}
               placeholder="Enter your password"
               leftAddon={<Ionicons name="lock-closed-outline" size={20} color={BRAND} />}
               rightAddon={eyeToggle(showPassword, () => setShowPassword((v) => !v))}
@@ -246,7 +207,6 @@ export default function SignupPasswordScreen() {
               secureTextEntry={!showConfirm}
               value={confirm}
               onChangeText={setConfirm}
-              onFocus={scrollToConfirm}
               placeholder="Confirm your password"
               leftAddon={<Ionicons name="lock-closed-outline" size={20} color={BRAND} />}
               rightAddon={eyeToggle(showConfirm, () => setShowConfirm((v) => !v))}
@@ -320,8 +280,8 @@ export default function SignupPasswordScreen() {
               <BrandTaglineFooter />
             </View>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </KeyboardAwareScrollView>
+      </View>
     </SafeAreaView>
   );
 }

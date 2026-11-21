@@ -16,6 +16,7 @@ import {
   formatInr,
   formatIstDate,
   includedFeatures,
+  lockedFeatures,
   paymentStatusLabel,
   type StatusTone,
 } from '@/src/features/billing/billingLogic';
@@ -184,6 +185,7 @@ function PlanCard({
  *  has it, so there's nothing to buy. */
 function FreePlanCard({ features, current }: { features: FeatureAccess[]; current: boolean }) {
   const included = includedFeatures(features);
+  const locked = lockedFeatures(features);
   return (
     <View style={styles.card}>
       <View style={styles.cardHead}>
@@ -201,12 +203,30 @@ function FreePlanCard({ features, current }: { features: FeatureAccess[]; curren
           <Text style={styles.per}> forever</Text>
         </Text>
       </View>
+      {included.length > 0 ? (
+        <Text style={styles.featureGroup}>{current ? 'What you have now' : 'Included'}</Text>
+      ) : null}
       {included.map((label) => (
         <Text key={label} style={styles.feature}>
           <Text style={styles.tick}>✓ </Text>
           {label}
         </Text>
       ))}
+      {locked.length > 0 ? (
+        <>
+          <Text style={styles.featureGroup}>Locked · upgrade to unlock</Text>
+          {locked.map((label) => (
+            <View
+              key={label}
+              style={styles.lockedRow}
+              accessibilityLabel={`${label}, locked on the Free plan`}
+            >
+              <Ionicons name="lock-closed" size={13} color={colors.textMuted} />
+              <Text style={styles.lockedFeature}>{label}</Text>
+            </View>
+          ))}
+        </>
+      ) : null}
       <Text style={styles.renewNote}>
         {current ? 'No card needed' : 'Included with every account'}
       </Text>
@@ -454,6 +474,21 @@ const styles = StyleSheet.create({
   per: { fontFamily: typography.fontFamily.regular, fontSize: typography.size.sm, color: colors.textSecondary },
   feature: { fontFamily: typography.fontFamily.regular, color: colors.text, lineHeight: 22 },
   tick: { color: colors.primary, fontFamily: typography.fontFamily.bold },
+  featureGroup: {
+    marginTop: spacing.sm,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: typography.size.xs,
+    color: colors.textMuted,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  lockedRow: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 22 },
+  lockedFeature: {
+    flex: 1,
+    fontFamily: typography.fontFamily.regular,
+    color: colors.textMuted,
+    lineHeight: 22,
+  },
   onDark: { color: colors.white },
   onDarkMuted: { color: 'rgba(255,255,255,0.7)' },
   buyRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },

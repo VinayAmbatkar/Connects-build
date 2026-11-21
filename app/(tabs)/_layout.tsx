@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
-import { Redirect, Tabs, router, usePathname } from 'expo-router';
+import { Redirect, Tabs, usePathname } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { messagesApi } from '@/src/api/messages';
 import { profileApi } from '@/src/api/profile';
 import { isConsumerRole } from '@/src/features/profile/profileLocks';
-import { ONBOARDING_EDIT_PROFILE } from '@/src/features/profile/profileGate';
+import { promptCompleteProfile } from '@/src/features/profile/profileGate';
 import { Ionicons } from '@expo/vector-icons';
 import { AnimatedTabBar } from '@/src/components/AnimatedTabBar';
 import { ConnectTabIcon } from '@/src/components/ConnectTabIcon';
@@ -12,7 +12,8 @@ import { AppHeader } from '@/src/components/AppHeader';
 import { useAuthStore } from '@/src/store/authStore';
 import { colors, typography } from '@/src/theme/tokens';
 
-const GATED_TAB_PATHS = ['/feed', '/vendors', '/connect', '/network', '/messages'];
+// Home (feed), Discover (vendors) and Profile.
+const PROMPT_TAB_PATHS = ['/feed', '/vendors', '/profile'];
 
 export default function TabsLayout() {
   const accessToken = useAuthStore((s) => s.accessToken);
@@ -43,14 +44,15 @@ export default function TabsLayout() {
     !!profile &&
     !isConsumerRole(profile.role ?? user?.role) &&
     profile.profileComplete === false;
-  // Only the tabs whose features the backend gates -- not Profile, and not
-  // stack screens (this layout stays mounted under Edit Profile itself).
-  const onGatedTab = GATED_TAB_PATHS.some(
+  // Ask (don't force) only on Home, Discover and Profile -- once each time
+  // one of them is opened. Not on stack screens: this layout stays mounted
+  // under Edit Profile itself.
+  const onPromptTab = PROMPT_TAB_PATHS.some(
     (path) => pathname === path || pathname.startsWith(`${path}/`),
   );
   useEffect(() => {
-    if (mustCompleteProfile && onGatedTab) router.push(ONBOARDING_EDIT_PROFILE);
-  }, [mustCompleteProfile, onGatedTab, pathname]);
+    if (mustCompleteProfile && onPromptTab) promptCompleteProfile();
+  }, [mustCompleteProfile, onPromptTab, pathname]);
 
   if (!accessToken) {
     return <Redirect href="/(auth)/login" />;

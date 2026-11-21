@@ -24,6 +24,13 @@ export function isProfileIncompleteError(error: unknown): boolean {
 
 let promptOpen = false;
 let editProfileOpen = false;
+let tourActive = false;
+
+/** The first-run tour reports when it's showing, so this dialog never
+ *  stacks on top of it (the feed prompts once the tour ends). */
+export function setTourActive(active: boolean) {
+  tourActive = active;
+}
 
 /** Edit Profile reports when it's on screen, so the prompt never sends
  *  someone to the page they're already filling in. */
@@ -31,22 +38,26 @@ export function setEditProfileOpen(open: boolean) {
   editProfileOpen = open;
 }
 
-/** One dialog however many gated requests fail at once. */
+/** Shown when a professional with an incomplete profile opens Home,
+ *  Discover or Profile (see the tabs layout). One dialog at a time;
+ *  "Later" dismisses it until they open one of those tabs again. */
 export function promptCompleteProfile() {
-  if (promptOpen || editProfileOpen) return;
+  if (promptOpen || editProfileOpen || tourActive) return;
   promptOpen = true;
-  appAlert(
-    COMPLETE_PROFILE_TITLE,
-    COMPLETE_PROFILE_MESSAGE,
-    [
-      {
-        text: 'Complete profile',
-        onPress: () => {
-          promptOpen = false;
-          router.push(ONBOARDING_EDIT_PROFILE);
-        },
+  appAlert(COMPLETE_PROFILE_TITLE, COMPLETE_PROFILE_MESSAGE, [
+    {
+      text: 'Later',
+      style: 'cancel',
+      onPress: () => {
+        promptOpen = false;
       },
-    ],
-    { cancelable: false },
-  );
+    },
+    {
+      text: 'Complete profile',
+      onPress: () => {
+        promptOpen = false;
+        router.push(ONBOARDING_EDIT_PROFILE);
+      },
+    },
+  ]);
 }

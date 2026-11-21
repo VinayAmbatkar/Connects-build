@@ -26,14 +26,21 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 type RoleOption = AppRole;
 
+// Signup order; Architect isn't a signup role (it's a Consultant specialization).
+const SIGNUP_ROLE_ORDER = ['Consumer', 'Consultant', 'Builder', 'Contractor', 'Vendor'];
+const SIGNUP_ROLES: RoleOption[] = SIGNUP_ROLE_ORDER.map(
+  (value) => DEFAULT_ROLES.find((r) => r.value === value)!,
+);
+
 export default function SignupRoleScreen() {
   const draft = useSignupStore((s) => s.draft);
   const update = useSignupStore((s) => s.update);
   const insets = useSafeAreaInsets();
-  const roles: RoleOption[] = DEFAULT_ROLES;
+  const roles: RoleOption[] = SIGNUP_ROLES;
 
   useEffect(() => {
-    if (!draft.role && roles[0]) {
+    // Reset anything that isn't a signup role (e.g. an old draft value).
+    if ((!draft.role || !roles.some((r) => r.value === draft.role)) && roles[0]) {
       update({ role: roles[0].value });
     }
   }, [draft.role, roles, update]);
